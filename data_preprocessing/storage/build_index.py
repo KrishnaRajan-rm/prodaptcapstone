@@ -38,7 +38,8 @@ def run_build_index(resume: bool = True, batch_size: int = 64):
 
     # Step 1: SQLite Database Builder (Metadata + FTS5 + Vault)
     t0 = time.time()
-    n_sqlite_chunks = build_sqlite_database(chunks_path, vault_path, db_path)
+    ids_path = vectors_dir / "vector_ids.parquet"
+    n_sqlite_chunks = build_sqlite_database(chunks_path, vault_path, db_path, ids_parquet_path=ids_path)
     logger.info(f"1. SQLite database and FTS5 index built in {time.time() - t0:.2f}s")
 
     # Step 2: Dense Vector Embeddings (NumPy Memmap)

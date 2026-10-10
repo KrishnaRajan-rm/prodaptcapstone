@@ -29,10 +29,13 @@ def strip_pii_placeholders(text: str) -> str:
     return " ".join(cleaned.split())
 
 
+from typing import Optional
+
 def build_sqlite_database(
     chunks_parquet_path: Path,
     vault_parquet_path: Path,
     sqlite_db_path: Path,
+    ids_parquet_path: Optional[Path] = None,
     batch_size: int = 5000
 ):
     """Builds restaurant_ops.db with chunks_meta, FTS5 virtual table, vault, and system tables."""
@@ -145,8 +148,23 @@ def build_sqlite_database(
     chunks_sql = f"read_parquet('{str(chunks_parquet_path).replace(chr(92), '/')}')"
     total_chunks = duck_con.execute(f"SELECT count(*) FROM {chunks_sql}").fetchone()[0]
 
-    cursor = duck_con.execute(f"SELECT * FROM {chunks_sql}")
-    row_idx = 0
+    if ids_parquet_path and Path(ids_parquet_path).exists():
+        ids_sql = f"read_parquet('{str(ids_parquet_path).replace(chr(92), '/')}')"
+        query_sql = f"""
+            SELECT c.*, v.row_idx as assigned_row_idx
+            FROM {chunks_sql} c
+            JOIN {ids_sql} v ON c.chunk_id = v.chunk_id
+            ORDER BY v.row_idx
+        """
+    else:
+        query_sql = f"""
+            SELECT *, (row_number() OVER (ORDER BY chunk_id) - 1) as assigned_row_idx
+            FROM {chunks_sql}
+            ORDER BY chunk_id
+        """
+
+    cursor = duck_con.execute(query_sql)
+    processed_count = 0
 
     while True:
         chunk_df = cursor.fetch_df_chunk(batch_size)
@@ -158,6 +176,7 @@ def build_sqlite_database(
 
         for _, row in chunk_df.iterrows():
             c_id = row["chunk_id"]
+            assigned_idx = int(row["assigned_row_idx"])
             aspects_json = json.dumps(row["aspects"]) if isinstance(row["aspects"], list) else str(row["aspects"])
             aspect_sentiments_json = str(row["aspect_sentiments"])
 
@@ -165,7 +184,7 @@ def build_sqlite_database(
             fts_text = strip_pii_placeholders(row["text_masked"])
 
             meta_rows.append((
-                row_idx,
+                assigned_idx,
                 c_id,
                 row["review_id"],
                 row["business_id"],
@@ -187,7 +206,7 @@ def build_sqlite_database(
             ))
 
             fts_rows.append((c_id, fts_text))
-            row_idx += 1
+            processed_count += 1
 
         cur.executemany("""
             INSERT INTO chunks_meta VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -198,7 +217,7 @@ def build_sqlite_database(
         """, fts_rows)
 
         con.commit()
-        logger.info(f"Populated {row_idx}/{total_chunks} chunks into SQLite...")
+        logger.info(f"Populated {processed_count}/{total_chunks} chunks into SQLite...")
 
     # Build indices on chunks_meta
     logger.info("Creating indices on chunks_meta...")
@@ -229,5 +248,5 @@ def build_sqlite_database(
         logger.info(f"Vault populated with {len(vault_rows)} raw records.")
 
     con.close()
-    logger.info(f"SQLite database build complete: {row_idx} chunks indexed.")
-    return row_idx
+    logger.info(f"SQLite database build complete: {processed_count} chunks indexed.")
+    return processed_count
