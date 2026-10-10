@@ -1,0 +1,767 @@
+pizza
+burger
+cheeseburger
+hamburger
+pasta
+spaghetti
+fettuccine
+lasagna
+ravioli
+penne
+gnocchi
+risotto
+linguine
+carbonara
+alfredo
+bolognese
+marinara
+pesto
+mozzarella
+parmesan
+provolone
+cheddar
+gouda
+brie
+ricotta
+feta
+camembert
+gorgonzola
+burrata
+pepperoni
+sausage
+prosciutto
+pancetta
+salami
+bacon
+chorizo
+calzone
+stromboli
+taco
+burrito
+quesadilla
+enchilada
+fajita
+guacamole
+salsa
+tortilla
+nachos
+chimichanga
+carnitas
+barbacoa
+al pastor
+carne asada
+tamale
+queso
+churro
+tres leches
+sushi
+sashimi
+nigiri
+maki
+ramen
+udon
+soba
+tempura
+teriyaki
+edamame
+miso
+gyoza
+yakitori
+tonkatsu
+katsu
+tataki
+wasabi
+nori
+sake
+pho
+banh mi
+spring roll
+egg roll
+pad thai
+pad see ew
+tom yum
+green curry
+red curry
+massaman curry
+satay
+fried rice
+chow mein
+lo mein
+dumpling
+wonton
+dim sum
+bao
+potsticker
+peking duck
+kung pao
+general tso
+orange chicken
+sweet and sour
+mongolian beef
+hot pot
+kimchi
+bulgogi
+bibimbap
+kalbi
+japchae
+korean fried chicken
+falafel
+hummus
+shawarma
+kebab
+gyros
+pita
+tzatziki
+baba ganoush
+tabbouleh
+tahini
+baklava
+curry
+tikka masala
+butter chicken
+biryani
+naan
+roti
+samosa
+tandoori
+korma
+vindaloo
+paneer
+dal
+chana masala
+raita
+dosa
+idli
+gulab jamun
+steak
+ribeye
+filet mignon
+sirloin
+t-bone
+prime rib
+brisket
+pulled pork
+ribs
+bbq
+barbecue
+cornbread
+coleslaw
+baked beans
+mac and cheese
+macaroni
+fried chicken
+chicken tenders
+chicken wings
+buffalo wings
+roast chicken
+grilled chicken
+chicken parmesan
+chicken piccata
+chicken marsala
+meatball
+meatloaf
+pot roast
+lamb chops
+veal
+pork chop
+pork belly
+salmon
+tuna
+trout
+sea bass
+halibut
+cod
+snapper
+tilapia
+catfish
+swordfish
+lobster
+crab
+shrimp
+prawns
+scallops
+clams
+mussels
+oysters
+calamari
+squid
+octopus
+ceviche
+crab cake
+clam chowder
+lobster roll
+fish and chips
+tuna tartar
+caesar salad
+greek salad
+cobb salad
+caprese
+wedge salad
+arugula
+spinach
+kale
+romaine
+mixed greens
+vinaigrette
+ranch
+blue cheese
+thousand island
+honey mustard
+balsamic
+french fries
+sweet potato fries
+onion rings
+tater tots
+mashed potatoes
+baked potato
+hash browns
+french toast
+pancake
+waffle
+crepe
+omelet
+scrambled eggs
+eggs benedict
+poached eggs
+bagel
+croissant
+muffin
+biscuit
+scone
+donut
+cinnamon roll
+danish
+toast
+avocado toast
+french onion soup
+tomato soup
+chicken noodle soup
+butternut squash soup
+minestrone
+gazpacho
+lentil soup
+clam chowder
+chili
+bisque
+sandwich
+panini
+sub
+hoagie
+hero
+club sandwich
+reuben
+blt
+grilled cheese
+cheesesteak
+philly cheesesteak
+french dip
+po boy
+cuban sandwich
+wrap
+tiramisu
+cheesecake
+chocolate cake
+lava cake
+brownie
+cookie
+cannoli
+creme brulee
+apple pie
+pecan pie
+key lime pie
+gelato
+ice cream
+sorbet
+sundae
+milkshake
+parfait
+profiterole
+tart
+macaron
+souffle
+panna cotta
+coffee
+espresso
+cappuccino
+latte
+macchiato
+americano
+mocha
+cold brew
+iced coffee
+tea
+chai
+matcha
+green tea
+black tea
+earl grey
+herbal tea
+lemonade
+iced tea
+smoothie
+boba
+bubble tea
+beer
+ipa
+lager
+stout
+pilsner
+ale
+wine
+cabernet
+merlot
+pinot noir
+chardonnay
+sauvignon blanc
+rose
+champagne
+prosecco
+cocktail
+margarita
+martini
+old fashioned
+mojito
+mule
+sangria
+whiskey
+vodka
+tequila
+rum
+gin
+bourbon
+cognac
+brandy
+cider
+apple cider
+hard cider
+pretzel
+chips
+dip
+fondue
+bruschetta
+carpaccio
+tartare
+guacamole
+nachos
+poutine
+bruschetta
+croquette
+arancini
+empanda
+tamales
+arepas
+pupusas
+charcuterie
+prosciutto
+truffle
+black truffle
+white truffle
+caviar
+foie gras
+aioli
+chimichurri
+hollandaise
+bearnaise
+demi glace
+chimichanga
+tzatziki
+tahini
+hummus
+falafel
+pesto
+guacamole
+salsa verde
+pico de gallo
+jalapeno
+habanero
+chipotle
+sriracha
+wasabi
+soy sauce
+teriyaki
+tamari
+sesame oil
+olive oil
+balsamic vinegar
+garlic
+ginger
+basil
+oregano
+rosemary
+thyme
+cilantro
+parsley
+dill
+mint
+saffron
+cinnamon
+vanilla
+chocolate
+caramel
+toffee
+fudge
+ganache
+fondant
+marzipan
+custard
+whipped cream
+meringue
+marshmallow
+honey
+maple syrup
+peanut butter
+nutella
+almond
+walnut
+pecan
+pistachio
+cashew
+macadamia
+hazelnut
+sesame
+sunflower seeds
+chia
+quinoa
+couscous
+barley
+polenta
+farro
+bulgur
+buckwheat
+millet
+oatmeal
+granola
+muesli
+brie
+camembert
+cheddar
+swiss cheese
+gouda
+parmesan
+pecorino
+asiago
+fontina
+provolone
+havarti
+manchego
+gruyere
+mascarpone
+ricotta
+mozzarella
+burrata
+stracciatella
+gorgonzola
+roquefort
+stilton
+goat cheese
+feta
+halloumi
+paneer
+queso fresco
+cotija
+monterey jack
+pepper jack
+colby
+muenster
+provolone
+edam
+jarlsberg
+fontina
+taleggio
+bocconcini
+neapolitan pizza
+margherita pizza
+deep dish pizza
+sicilian pizza
+sourdough
+focaccia
+ciabatta
+brioche
+baguette
+rye bread
+pumpernickel
+pita bread
+naan bread
+tortilla chips
+pita chips
+bagel chips
+corn chips
+plantain chips
+truffle fries
+garlic knots
+garlic bread
+breadsticks
+bruschetta
+crostini
+antipasto
+prosciutto e melone
+beef carpaccio
+steak tartare
+salmon tartare
+ceviche
+shrimp cocktail
+crab cakes
+fried calamari
+clams casino
+oysters rockefeller
+mussels marinara
+escargot
+stuffed mushrooms
+deviled eggs
+spinach artichoke dip
+buffalo chicken dip
+queso dip
+salsa con queso
+guacamole and chips
+nachos supreme
+loaded potato skins
+chicken quesadilla
+beef empanadas
+pork dumplings
+vegetable spring rolls
+crispy egg rolls
+crab rangoon
+chicken satay
+beef yakitori
+edamame sea salt
+miso soup
+tom yum soup
+wonton soup
+egg drop soup
+hot and sour soup
+matzo ball soup
+italian wedding soup
+minestrone soup
+gazpacho soup
+corn chowder
+clam chowder
+lobster bisque
+french onion soup
+butternut squash soup
+split pea soup
+lentil soup
+chicken tortilla soup
+black bean soup
+beef stew
+goulash
+gumbo
+jambalaya
+paella
+bouillabaisse
+cioppino
+pot au feu
+ossubuco
+coq au vin
+boeuf bourguignon
+beef wellington
+prime rib roast
+chateaubriand
+filet mignon steak
+new york strip steak
+ribeye steak
+porterhouse steak
+t-bone steak
+flank steak
+skirt steak
+hanger steak
+flat iron steak
+beef short ribs
+braised short ribs
+korean bbq ribs
+bbq pulled pork
+baby back ribs
+st louis ribs
+smoked brisket
+pork tenderloin
+pork carnitas
+pork schnitzel
+veal piccata
+veal marsala
+lamb shanks
+roasted rack of lamb
+roast turkey
+peking roast duck
+crispy duck confit
+roasted chicken
+chicken parmesan
+chicken cacciatore
+chicken cordon bleu
+chicken tikka masala
+tandoori chicken
+butter chicken
+chicken korma
+chicken biryani
+lamb biryani
+goat curry
+palak paneer
+chana masala
+dal makhani
+aloo gobi
+malai kofta
+vegetable samosa
+garlic naan
+peshwari naan
+cheese kulcha
+pad thai noodles
+pad see ew noodles
+drunken noodles
+panang curry
+green curry chicken
+red curry duck
+massaman beef curry
+vietnamese pho tai
+bun cha
+banh mi sandwich
+crispy spring rolls
+fresh summer rolls
+steamed bao buns
+pork belly bao
+peking duck bao
+char siu pork
+crispy roast pork
+kung pao chicken
+sweet and sour pork
+general tso chicken
+sesame chicken
+orange peel beef
+mongolian beef
+beef with broccoli
+szechuan chicken
+mapo tofu
+dan dan noodles
+wonton noodle soup
+taiwanese beef noodle soup
+shanghai soup dumplings
+xiao long bao
+scallion pancake
+fried pork dumplings
+steamed dim sum
+har gow
+siu mai
+lo mai gai
+egg custard tart
+matcha green tea crepe cake
+mango sticky rice
+fried banana
+thai iced tea
+vietnamese iced coffee
+matcha latte
+taro bubble tea
+brown sugar milk tea
+mango smoothie
+strawberry banana smoothie
+acai bowl
+dragon fruit bowl
+chia seed pudding
+granola parfait
+avocado toast with poached egg
+eggs benedict with smoked salmon
+huevos rancheros
+breakfast burrito
+belgian waffle
+buttermilk pancakes
+challah french toast
+crepes with nutella
+cannoli siciliani
+tiramisu classico
+panna cotta with berries
+creme brulee vanille
+chocolate fondant
+warm chocolate lava cake
+molten cake
+new york cheesecake
+strawberry shortcake
+carrot cake
+red velvet cake
+black forest cake
+key lime pie
+meyer lemon tart
+apple tarte tatin
+profiteroles au chocolat
+eclair au chocolat
+mille feuille
+paris brest
+macarons assorted
+madeleines
+biscotti
+gelato pistacchio
+gelato stracciatella
+sorbetto al limone
+affogato al caffe
+espresso martini
+aperol spritz
+campari spritz
+negroni classico
+old fashioned cocktail
+manhattan cocktail
+whiskey sour
+margarita on the rocks
+paloma
+mojito cubano
+moscow mule
+gin and tonic
+dry martini
+cosmopolitan
+mai tai
+pina colada
+daiquiri
+caipirinha
+sangria roja
+sangria blanca
+prosecco doc
+champagne brut
+cava brut
+chardonnay oak aged
+sauvignon blanc crisp
+pinot grigio
+riesling dry
+cabernet sauvignon
+merlot reserve
+pinot noir reserve
+syrah shiraz
+malbec reserva
+tempranillo rioja
+chianti classico
+barolo docg
+brunello di montalcino
+craft ipa
+hazy ipa
+double ipa
+stout imperial
+porter smoked
+pilsner czech
+wheat beer hefeweizen
+belgian tripel
+belgian dubbel
+saison farmhouse
+sour beer ale
+hard apple cider
+ginger beer
+kombucha
+sparkling mineral water
+san pellegrino
+perrier
+espresso doppio
+macchiato caldo
+cortado
+flat white
+cappuccino schiuma
+caffe latte
+caffe mocha
+caramel macchiato
+cold brew nitro
+iced americano
+earl grey tea
+english breakfast tea
+jasmine green tea
+moroccan mint tea
+chamomile herbal tea
+rooibos red tea
+masala chai tea
+matcha green tea
+hot chocolate
+mexican hot chocolate
+white hot chocolate
+apple cider spiced
+eggnog spiced
+mulled wine
