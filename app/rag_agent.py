@@ -3,11 +3,18 @@ Integrates HybridRetriever with OpenRouter API using free models and automatic f
 """
 
 import os
+import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
 from dotenv import load_dotenv
+
+# Ensure project root is in sys.path
+root_dir = Path(__file__).resolve().parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
 
 from app.core.logging import logger
 from app.retrieval.hybrid import HybridRetriever, SearchResult, get_retriever
@@ -193,3 +200,51 @@ def ask(query: str, top_k: int = 5, city: Optional[str] = None) -> RAGAnswer:
     assistant = RAGAssistant()
     filters = {"city": city} if city else None
     return assistant.answer_query(query, top_k=top_k, filters=filters)
+
+
+def main():
+    import argparse
+
+    if sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    parser = argparse.ArgumentParser(description="AI Restaurant Operations RAG Assistant")
+    parser.add_argument("query", nargs="?", type=str, help="Search query or question")
+    parser.add_argument("--city", type=str, default=None, help="Filter by city (e.g. Philadelphia, Nashville)")
+    parser.add_argument("--top-k", type=int, default=5, help="Number of evidence chunks to retrieve")
+    parser.add_argument("--interactive", action="store_true", help="Start an interactive query session")
+    args = parser.parse_args()
+
+    assistant = RAGAssistant()
+
+    if args.interactive:
+        print("\n" + "=" * 70)
+        print("AI RESTAURANT OPERATIONS RAG ASSISTANT (Interactive Mode)")
+        print("Type your question and press Enter. Type 'exit' to quit.")
+        print("=" * 70 + "\n")
+        while True:
+            try:
+                user_q = input("\nEnter query > ").strip()
+                if not user_q:
+                    continue
+                if user_q.lower() in {"exit", "quit", "q"}:
+                    print("Exiting.")
+                    break
+                filters = {"city": args.city} if args.city else None
+                ans = assistant.answer_query(user_q, top_k=args.top_k, filters=filters)
+                ans.display()
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+    else:
+        query = args.query or "waited an hour for food"
+        filters = {"city": args.city} if args.city else None
+        print(f"\n[Running RAG Agent for query: '{query}']...")
+        ans = assistant.answer_query(query, top_k=args.top_k, filters=filters)
+        ans.display()
+
+
+if __name__ == "__main__":
+    main()
+
