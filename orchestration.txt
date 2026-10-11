@@ -1,0 +1,335 @@
+# Phase 3: LangGraph Orchestration for AI-Powered Restaurant Operations Review Assistant
+
+## 1. Your task
+
+Implement **Phase 3 — LangGraph Orchestration** in my existing AI-Powered Restaurant Operations Review Assistant.
+
+The offline data pipeline, Hybrid RAG, and specialist agents have already been developed in previous phases. Your responsibility is to orchestrate the existing components into one coordinated, traceable workflow.
+
+**Do not rebuild the agents. Do not rewrite working RAG functionality. Integrate what already exists.**
+
+Before writing code, inspect the repository thoroughly and identify the actual implementation of all components.
+
+## 2. Required technology stack
+
+Use the following stack, adapting only when the existing repository requires it:
+
+- **Python 3.11+** or the version already established in the project.
+- **LangGraph** for graph orchestration, parallel execution, shared state, conditional routing, and error handling.
+- **Google ADK** for the existing specialist-agent implementations.
+- **A2A protocol and the existing A2A client/SDK** for communicating with agents running as independent services.
+- **Pydantic** for validating graph inputs, agent responses, and final outputs.
+- **asyncio** for concurrent execution.
+- **httpx** or the existing HTTP client for asynchronous service calls, if needed.
+- Existing Hybrid RAG, database, configuration, logging, and observability utilities.
+- **pytest and pytest-asyncio**, if compatible with the existing test setup, for automated tests.
+
+Do not introduce a second orchestration framework. LangGraph is the workflow orchestrator; Google ADK and A2A remain responsible for the existing specialist agents and their communication.
+
+Do not add CrewAI, DeepEval, a new vector database, or a new LLM provider in this phase.
+
+## 3. First inspect the repository
+
+Before making changes:
+
+1. Inspect the directory structure, README, dependency files, environment configuration, and tests.
+2. Locate the four existing specialist agents:
+   - Classification Agent.
+   - Trend Analysis Agent.
+   - Root Cause Analysis Agent.
+   - Action Planner Agent.
+3. Verify their actual service addresses, ports, Agent Cards, request schemas, response schemas, and A2A client integration.
+4. Locate the existing Hybrid RAG interface and determine how evidence and source IDs are made available.
+5. Check whether input validation, PII Gate 2, and relevant request models already exist.
+6. Identify existing logging and error-handling conventions.
+7. Run the existing tests before changing anything and record the baseline.
+
+Do not assume that every component is implemented exactly as described. Adapt to the actual code and document any missing dependencies.
+
+If one of the specialist agents is not yet implemented or its A2A interface is not functional, report that dependency clearly rather than silently creating a fake replacement.
+
+## 4. Target workflow
+
+Implement the following workflow using LangGraph:
+
+START
+  |
+  v
+Validate Request and Context
+  |
+  v
+Reuse Existing Retrieval / Evidence Context, When Required
+  |
+  v
+Classification Agent  ||  Trend Analysis Agent
+  |                    ||
+  +---------+----------+
+            |
+            v
+     Root Cause Agent
+            |
+            v
+      Action Planner
+            |
+            v
+     Aggregate Results
+            |
+            v
+           END
+
+The Classification Agent and Trend Analysis Agent must execute concurrently when the request requires both. They must receive the same relevant request context, including the business ID, date range, and other applicable filters.
+
+The Root Cause Agent must receive the validated outputs from both upstream agents, together with relevant supporting evidence.
+
+The Action Planner must receive the root-cause findings and the preceding results required to prioritize recommendations.
+
+Reuse existing input-guardrail, retrieval, and privacy components if they are already available. If a required upstream component is missing, keep the integration boundary explicit and report it; do not rebuild that component as part of this phase.
+
+## 5. Design the LangGraph state
+
+Create a clearly defined, typed shared state using the existing project conventions, such as a TypedDict with Pydantic request/response models.
+
+The state should carry the equivalents of:
+
+- `request_id`
+- `business_id`
+- `query`
+- `start_date` and `end_date`, when applicable
+- Relevant request filters
+- Retrieved evidence and source references
+- Classification result
+- Trend analysis result
+- Root-cause result
+- Action-planning result
+- Per-agent execution status
+- Per-agent execution duration
+- Structured errors and warnings
+- Overall workflow status
+- Final aggregated result
+
+Use the actual schema names and types where they already exist.
+
+Requirements:
+
+- Preserve the business ID throughout the graph.
+- Prevent data from different businesses from being mixed.
+- Pass validated structured results between nodes, not arbitrary unvalidated text.
+- Do not silently replace failed agent results with fabricated successful results.
+- Avoid storing secrets, raw PII, or unnecessary sensitive data in graph state.
+- Keep the state minimal; do not duplicate the entire review corpus when a compact evidence package is sufficient.
+
+## 6. Implement the graph nodes
+
+Create small, testable graph nodes that use the existing components.
+
+### Node A: Request validation
+
+Validate the incoming request using existing schemas.
+
+Check required fields, supported date ranges, query validity, and business ID requirements according to the existing implementation.
+
+Reject invalid requests with clear, structured errors.
+
+### Node B: Existing context and retrieval integration
+
+Reuse the existing Hybrid RAG interface when the workflow requires supporting reviews or evidence.
+
+Preserve source IDs, relevant metadata, business filtering, and the existing retrieval output format.
+
+Do not implement another BM25 search, embedding pipeline, reranker, or vector store.
+
+If the current specialist agents already perform their own appropriate retrieval, avoid duplicate retrieval calls.
+
+### Node C: Parallel specialist execution
+
+Invoke Classification and Trend Analysis concurrently using the existing A2A communication mechanism.
+
+Requirements:
+
+- Use actual A2A requests and responses.
+- Validate each response against its schema.
+- Apply sensible timeouts.
+- Capture latency and execution status independently.
+- Avoid executing the same agent twice accidentally.
+- Do not block Classification on Trend Analysis or vice versa.
+- Preserve the business ID and applicable filters in both calls.
+
+Use LangGraph's supported parallel graph execution pattern, such as branching to both nodes and joining at a downstream node. Do not merely run two sequential calls inside a node and describe the workflow as parallel.
+
+### Node D: Root Cause Analysis
+
+Execute only after the required Classification and Trend results are available.
+
+Pass the structured results and supporting evidence through the existing agent interface.
+
+The root-cause output must retain evidence references and distinguish supported findings from hypotheses.
+
+### Node E: Action Planner
+
+Execute after Root Cause Analysis.
+
+Pass the available operational findings and evidence to the existing Action Planner.
+
+Preserve its recommendations, priorities, suggested owners, KPIs, and evidence references according to its actual response schema.
+
+### Node F: Result aggregation
+
+Create one consistent final response containing the results from all four agents.
+
+Include:
+
+- Request and business identifiers.
+- Classification findings.
+- Historical trends and forecast status, where available.
+- Root-cause hypotheses and supporting evidence.
+- Ranked operational actions and KPIs.
+- Agent execution statuses and timings.
+- Warnings, partial failures, and data limitations.
+- Overall workflow status.
+
+Do not invent a manager-friendly final report, LLM-as-judge score, confidence score, or verified claim if the corresponding functionality is not implemented. Preserve existing fields where available and mark unavailable information explicitly.
+
+## 7. Failure handling and routing
+
+Implement predictable failure behaviour.
+
+- Invalid requests must fail before expensive agent calls.
+- Agent timeouts must be bounded and reported.
+- A failed Classification or Trend call must not be represented as a successful result.
+- Do not invoke Root Cause Analysis if its required inputs are missing or invalid.
+- Do not invoke Action Planner if its required root-cause input is unavailable.
+- Preserve any successful upstream outputs when a later agent fails.
+- Use an explicit overall status, such as `success`, `partial_success`, or `failed`, consistent with existing conventions.
+- Retry only when justified and safe; use bounded retries for transient failures.
+- Avoid retrying every error indiscriminately.
+- Prevent duplicate actions if a request is retried.
+- Record the failed node and a useful error message without exposing secrets or sensitive data.
+
+Use conditional edges in LangGraph where necessary to implement these decisions.
+
+Do not create complicated recovery loops unless the existing requirements need them.
+
+## 8. A2A integration
+
+Keep every specialist agent independently runnable as its own service.
+
+The orchestrator must discover or use the existing Agent Cards and communicate through the actual A2A interface.
+
+Do not bypass A2A by importing the agent implementation directly into the orchestration graph merely to make integration easier.
+
+Verify:
+
+- The correct service endpoint is configured.
+- The Agent Card is accessible using the existing protocol implementation.
+- Requests and responses follow the existing schemas.
+- Invalid responses are handled safely.
+- Connection errors and timeouts are reported correctly.
+
+Read configuration from the project's existing environment/configuration system. Do not hardcode API keys or duplicate configuration in multiple files.
+
+## 9. Configuration and service entry point
+
+Add an independent orchestrator entry point using the repository's existing conventions.
+
+Use environment-based configuration for the existing agent endpoints and relevant timeouts. Reuse actual ports and service addresses discovered in the repository rather than assuming they are unchanged.
+
+If an HTTP interface is already present, integrate with it. Otherwise, expose only the minimal interface needed to invoke and test the graph, following the existing project conventions.
+
+This is not the phase for building the final frontend, dashboard, or complete production API.
+
+The graph should be independently executable and testable without requiring the dashboard.
+
+## 10. Logging and observability
+
+Record:
+
+- Request ID and business ID, using the project's privacy-safe logging conventions.
+- Graph start and completion times.
+- Per-node start/end times and duration.
+- Per-agent success/failure status.
+- Agent timeouts and retry counts.
+- Total workflow duration.
+- Whether the Classification and Trend branches actually ran concurrently.
+
+Keep logs structured and useful for diagnosing slow calls.
+
+Never log API keys, secrets, raw PII, or unmasked review content. Preserve existing masking policies.
+
+Do not add a new observability platform unless the repository already uses one or it is explicitly required.
+
+## 11. Required tests
+
+Use mocks for A2A calls in unit tests so tests do not require paid LLM API calls.
+
+At minimum, test:
+
+1. Valid request and successful execution of all four agents.
+2. Classification and Trend execute concurrently.
+3. Root Cause starts only after the required upstream results are available.
+4. Action Planner starts only after Root Cause succeeds.
+5. Business ID and filters propagate correctly through the workflow.
+6. Retrieved evidence and source references are preserved.
+7. Classification timeout.
+8. Trend timeout.
+9. Root Cause failure.
+10. Action Planner failure.
+11. Invalid request and invalid agent response.
+12. Partial success and structured error reporting.
+13. No downstream execution with missing required inputs.
+14. A2A connectivity and Agent Card integration.
+15. Final response schema validation.
+16. Total and per-agent latency instrumentation.
+
+Use deterministic fixtures. For the parallelism test, use controlled asynchronous mocks to demonstrate overlapping execution rather than relying only on total runtime.
+
+Add at least one integration test against the actual running agent services when practical. Clearly separate mocked unit-test results from real service integration results.
+
+## 12. Performance requirements
+
+The purpose of orchestration is to coordinate the existing agents efficiently, not to increase the number of LLM calls unnecessarily.
+
+- Run Classification and Trend concurrently.
+- Do not call agents that are unnecessary for a supported request type, if conditional execution is implemented safely.
+- Do not duplicate retrieval or invoke an agent repeatedly without a reason.
+- Record actual latency before and after integration.
+- Do not claim that concurrency improved performance without benchmark evidence.
+
+Remember that the total workflow still waits for Root Cause Analysis and Action Planner after the parallel branches finish.
+
+## 13. Scope boundaries
+
+Implement only the LangGraph orchestration phase and the tests/documentation required for it.
+
+Do not rebuild:
+
+- Offline ingestion and cleaning.
+- PII Gate 1 or the indexing pipeline.
+- Hybrid RAG or its vector database.
+- The four specialist agents.
+- PII Gate 2 or role-based PII decoding.
+- The final quality gate or LLM-as-judge.
+- CrewAI drafting and validation.
+- The frontend/dashboard.
+- The feedback loop or DeepEval evaluation pipeline.
+
+These are separate components or later phases. Integrate existing functionality only where needed.
+
+## 14. Deliverables and acceptance criteria
+
+When implementation is complete, provide:
+
+1. A summary of the orchestration architecture.
+2. A graph diagram or Mermaid flowchart of the implemented nodes and edges.
+3. The list of files created and modified.
+4. The exact command to start the orchestrator.
+5. The exact commands to run unit and integration tests.
+6. Test results, including failures.
+7. Evidence that Classification and Trend ran concurrently.
+8. Evidence that Root Cause and Action Planner executed in the correct order.
+9. Confirmation that actual A2A communication was tested, or an explicit statement if it remains unverified.
+10. Measured end-to-end and per-agent latency.
+11. Known limitations and dependencies.
+
+**Definition of done:** One valid request must flow through the actual existing specialist services via LangGraph, execute Classification and Trend in parallel, execute Root Cause and Action Planner in the correct order, and return a schema-validated aggregate result with traceable evidence, timing, and honest failure statuses.
+
+Do not mark a feature complete merely because its code exists. Verify it with tests or clearly state what remains unverified.

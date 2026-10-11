@@ -1,0 +1,355 @@
+# Phase 4 — Quality Gate, PII Gate 2, and Evidence Validation
+
+You are working on my existing **AI-Powered Restaurant Operations Review Assistant**.
+
+The following components have already been implemented:
+- Offline data processing and indexing.
+- Hybrid RAG.
+- Classification Agent.
+- Trend Analysis Agent.
+- Root Cause Analysis Agent.
+- Action Planner Agent.
+- LangGraph orchestration with A2A communication.
+
+Your task is to implement **Phase 4: Quality, Privacy, Evidence Grounding, and Confidence Validation**.
+
+The objective is to ensure that the orchestrated system produces trustworthy, evidence-supported, privacy-safe operational recommendations.
+
+**Do not rebuild existing components. Inspect the repository first, reuse existing implementations, and integrate this phase into the existing LangGraph workflow.**
+
+## 1. Required technology stack
+
+Use the existing project stack and conventions:
+
+- Python using the repository's established version.
+- LangGraph for integrating the new workflow nodes.
+- Google ADK and A2A for the existing agents.
+- Pydantic for structured data and validation.
+- Existing Hybrid RAG and data-access interfaces.
+- Existing PII detection, masking, and token-vault implementation from PII Gate 1, if available.
+- The existing LLM provider for claim verification and LLM-as-judge.
+- pytest and existing test dependencies.
+- Existing logging, configuration, and telemetry infrastructure.
+
+Do not introduce another LLM provider, vector database, orchestration framework, or privacy library without first demonstrating a genuine need.
+
+## 2. Inspect the current implementation
+
+Before changing code:
+
+1. Inspect the existing LangGraph graph, nodes, edges, and state schema.
+2. Identify every point where queries, retrieved reviews, agent outputs, or personal information can be sent to an LLM.
+3. Inspect the PII Gate 1 masking and token-vault implementation.
+4. Locate the source IDs and metadata returned by Hybrid RAG.
+5. Inspect the response schemas for all four specialist agents.
+6. Determine how the Root Cause Agent obtains supporting evidence and how the Action Planner derives recommendations.
+7. Identify the existing model provider, configuration, and retry mechanisms.
+8. Run the current test suite and save the baseline results.
+
+Do not assume a privacy or quality component exists merely because it is mentioned in documentation. Verify it in code.
+
+## 3. Integrate PII Gate 2
+
+Implement a second privacy checkpoint before review content and queries are sent to LLMs.
+
+### Requirements
+
+- Inspect and reuse the existing PII detection and masking logic.
+- Scan the relevant query and retrieved evidence for residual personal information.
+- Replace detected personal information with reversible request-scoped tokens, following the existing PII Gate 1 conventions.
+- Keep the token mapping in a protected, request-scoped vault or equivalent secure mechanism.
+- Do not send raw PII to external LLM calls.
+- If masking fails or sensitive data remains, block the affected model call and return a structured error or safe fallback.
+- Preserve the evidence references needed to trace findings to source records.
+- Prevent tokens from being confused across different requests.
+- Ensure errors, exceptions, debug output, and traces do not expose unmasked personal information.
+
+The existing agents may perform their own retrieval. Inspect these paths and make sure the privacy boundary covers every applicable LLM call, not just the initial orchestration request.
+
+Do not rebuild Hybrid RAG or the four agents to accomplish this. Prefer integrating the existing masking component at the appropriate shared boundary.
+
+## 4. Implement the Quality Gate
+
+Add a Quality Gate node after the Action Planner and before the final response is returned.
+
+It must validate the combined outputs from Classification, Trend Analysis, Root Cause Analysis, and Action Planning.
+
+### A. Evidence-grounding validation
+
+For every material finding, hypothesis, forecast, and recommendation:
+
+1. Check whether the supporting source IDs actually exist in the available evidence context.
+2. Verify that quoted review excerpts match the original source text, allowing only documented normalization.
+3. Check that claims about a particular business are supported by evidence belonging to that business.
+4. Verify that claims fall within the relevant date range.
+5. Distinguish individual review evidence from aggregate statistics.
+6. Identify unsupported claims, missing citations, and contradictions between agents.
+7. Ensure a cited review genuinely supports the associated claim rather than merely mentioning a related topic.
+
+A valid source ID alone does not prove that a claim is supported.
+
+For example, if the user asks about emerging problems but a root-cause hypothesis discusses new-location onboarding without evidence that the selected business is newly opened, flag the unsupported inference.
+
+Do not fabricate replacement evidence or silently turn unsupported hypotheses into facts.
+
+### B. Statistical and trend validation
+
+Where sufficient source data is available, verify:
+
+- Complaint counts and percentages against their underlying data.
+- Percentage changes and comparison periods.
+- Historical date ranges and data freshness.
+- Whether a claimed worsening trend is actually supported.
+- Whether complaint counts are being confused with complaint rates.
+- Whether forecasts are labeled as predictions rather than observed facts.
+- Whether reported evaluation metrics correspond to actual evaluation results.
+- Whether satisfaction predictions are supported by the available labels and model evaluation.
+
+For example, if the dataset ends in January 2022, do not present a forecast beginning in February 2022 as a current forecast in October 2026. Clearly report the historical cutoff and explain that the data is stale for a current operational forecast.
+
+Use deterministic calculations and existing data sources for numerical verification wherever possible.
+
+### C. Recommendation validation
+
+Validate Action Planner outputs against the preceding findings.
+
+- Every recommended action must map to an identified operational problem or supported finding.
+- Priorities must be consistent with the available severity, frequency, trends, and impact information.
+- Owners must be reasonable operational roles, not invented named employees.
+- KPIs must measure the intended outcome.
+- Proposed targets must be labeled as proposed unless supported by an established business policy or baseline.
+- Operational standards, financial claims, and regulatory requirements must not be presented as verified facts without appropriate supporting evidence.
+- Flag recommendations that rely on unsupported assumptions.
+
+Do not automatically reject a reasonable hypothesis merely because it is not proven. Instead, distinguish evidence-supported findings, plausible hypotheses, and unverified assumptions.
+
+### D. Contradiction detection
+
+Compare agent outputs for inconsistencies.
+
+Examples:
+- Classification identifies only mild complaints, but the Action Planner ranks the issue as critical without supporting evidence.
+- The Trend Agent reports improving food quality, while the final report claims food quality is deteriorating.
+- A source review belongs to a different business from the requested business.
+- A root-cause hypothesis conflicts with the supplied evidence.
+
+Record contradictions and either resolve them using verified source data or flag them for review.
+
+## 5. Confidence scoring
+
+Implement an explainable confidence score for important claims and recommendations.
+
+Use a deterministic scoring approach based on factors such as:
+
+- Evidence relevance and directness.
+- Source traceability.
+- Agreement between independent findings, where applicable.
+- Data completeness and freshness.
+- Consistency with numerical results.
+- Contradictory evidence and unsupported assumptions.
+
+Document the scoring formula, component weights, and thresholds.
+
+Requirements:
+
+- Do not treat an LLM's self-reported confidence as calibrated probability.
+- Do not assign high confidence simply because multiple agents repeat the same unsupported claim.
+- Avoid double-counting evidence shared by agents.
+- Flag claims below the configured confidence threshold.
+- Preserve the difference between evidence confidence and forecast-model performance.
+- Use `unknown` or an equivalent status when confidence cannot be assessed.
+
+The score should be explainable to a developer or reviewer. Do not claim that it is statistically calibrated unless calibration has actually been measured.
+
+## 6. LLM-as-judge
+
+Implement an LLM-as-judge check for the final operational analysis, reusing the configured LLM provider.
+
+The judge should evaluate:
+
+- Faithfulness to supplied evidence.
+- Citation correctness.
+- Unsupported claims.
+- Contradictions.
+- Relevance to the original business query.
+- Whether recommendations follow from the findings.
+- Whether limitations and uncertainty are communicated clearly.
+
+Provide the judge with a compact, masked representation of the claims and their supporting evidence. Do not send the entire review corpus unnecessarily.
+
+The judge must return a structured, validated result containing the verdict, identified issues, supporting references, and suggested remediation.
+
+Important rules:
+
+- Treat judge output as an additional validation signal, not ground truth.
+- Do not allow the judge to invent evidence.
+- Do not use the judge's approval as a substitute for deterministic source and arithmetic checks.
+- If the judge fails or times out, mark that validation as unavailable and apply the configured safe policy.
+- Avoid unbounded retry loops or repeated judge calls.
+- Record judge latency separately.
+
+## 7. Quality Gate decision and routing
+
+Implement clear outcomes:
+
+- `passed`: required checks passed and no blocking issue remains.
+- `flagged`: material claims or recommendations need review.
+- `blocked`: critical privacy, provenance, or correctness failure prevents safe release.
+
+Use the project's existing status conventions if they already provide equivalent states.
+
+Examples of blocking conditions include:
+- A failed PII safety check before an LLM call.
+- Evidence references that cannot be verified for a critical claim.
+- A business-ID mismatch that could expose or attribute another business's information.
+- Material fabricated evidence or a severe unsupported safety claim.
+
+Minor uncertainty should not automatically block an entire report. It can be flagged and clearly disclosed.
+
+The graph must not return a `passed` status merely because the Quality Gate node executed successfully.
+
+## 8. Final-response PII decoding
+
+Implement or integrate role-based PII decoding at the final response boundary, after quality validation.
+
+Requirements:
+
+- Restore reversible tokens only when the caller's authenticated role and permissions authorize access.
+- Analysts or restricted roles must receive masked content.
+- Manager access must follow the existing authorization policy; do not assume every caller is a manager.
+- Decode only tokens belonging to the current request.
+- Never decode PII in internal logs, telemetry, exception messages, agent traces, or the Quality Gate's LLM payload.
+- Ensure unauthorized callers cannot supply arbitrary tokens to recover personal information.
+- If authentication or authorization infrastructure is not implemented, fail closed for unmasking and document the missing dependency.
+- Preserve the existing response schema wherever possible.
+
+Do not expose or return the token vault itself.
+
+## 9. Update the LangGraph workflow
+
+Integrate the new components into the existing graph without changing the established specialist-agent sequence.
+
+The intended logical flow is:
+
+Request Validation
+  → Existing Retrieval / Context Preparation
+  → PII Gate 2
+  → Classification + Trend Analysis in Parallel
+  → Root Cause Analysis
+  → Action Planner
+  → Quality Gate
+  → Conditional Routing:
+       Passed → Authorized Final-Response Decoding → Return
+       Flagged → Return With Warnings or Review Status
+       Blocked → Safe Error / Restricted Result
+
+Adapt the graph to the actual repository. If privacy checks already occur at a shared earlier boundary, reuse them rather than duplicating the same work.
+
+Preserve agent execution telemetry and error propagation.
+
+Do not silently convert failed validation into success. Do not decode PII before the Quality Gate has completed.
+
+## 10. Address current orchestration findings
+
+The previous orchestration output reported:
+
+- A successful concurrency check even though the displayed Classification and Trend timestamps appeared sequential.
+- Root-cause excerpts that did not clearly substantiate the original query.
+- A historical dataset ending in January 2022, despite the current date being October 2026.
+- Forecast values that could be mistaken for current forecasts.
+
+As part of this phase:
+
+1. Add regression tests ensuring that the concurrency telemetry accurately represents actual execution.
+2. Verify that the reported trend data is appropriate for the requested business and time range.
+3. Ensure stale historical data is clearly disclosed and is not presented as current.
+4. Ensure unsupported root-cause claims are flagged by the Quality Gate.
+5. Ensure forecasts and satisfaction predictions are validated against their actual evaluation results.
+
+If the timestamp issue reveals a defect in the existing LangGraph orchestration, make the smallest necessary correction and add a regression test. Do not redesign the graph.
+
+## 11. Testing requirements
+
+Add automated tests using pytest and mocks where appropriate.
+
+At minimum, test:
+
+1. PII is detected and masked before LLM invocation.
+2. Residual PII blocks the affected model call.
+3. Request-scoped tokens cannot be decoded across requests.
+4. Unauthorized roles cannot recover masked information.
+5. Valid source IDs with matching excerpts pass grounding checks.
+6. Fabricated or nonexistent source IDs are flagged.
+7. Valid source IDs with unrelated excerpts are flagged.
+8. Business-ID mismatches are blocked or safely rejected.
+9. Stale historical data is disclosed.
+10. Trend calculations are verified against deterministic fixtures.
+11. Unsupported root-cause hypotheses are flagged.
+12. Contradictory agent outputs are detected.
+13. Unsupported recommendations and invented targets are flagged.
+14. Confidence scoring follows the documented formula.
+15. Judge failures and timeouts produce safe outcomes.
+16. Passed, flagged, and blocked routes behave correctly.
+17. Only authorized final responses are decoded.
+18. Logs and error messages do not expose raw PII.
+19. Existing agent and LangGraph tests continue to pass.
+20. Concurrency telemetry matches actual overlapping execution.
+
+Use synthetic data and mocked LLM calls for unit tests. Do not require paid API calls for the standard test suite.
+
+Where practical, run an integration test using the actual existing agent services and a controlled test dataset.
+
+## 12. Performance and reliability
+
+The current end-to-end orchestration took approximately 55 seconds.
+
+- Measure the latency introduced by PII Gate 2, deterministic validation, and LLM-as-judge separately.
+- Do not use an LLM for checks that can be performed deterministically.
+- Reuse validated evidence and avoid duplicate retrieval.
+- Send only relevant claims and evidence to the judge.
+- Configure bounded timeouts and retries.
+- Avoid running the judge repeatedly for the same unchanged output.
+- Report the additional latency and the resulting validation coverage.
+- Do not claim an improvement without measured evidence.
+
+Preserve the correctness and privacy checks even when optimizing latency.
+
+## 13. Scope boundaries
+
+Implement this phase only.
+
+Do not rebuild:
+- Offline ingestion or PII Gate 1.
+- Hybrid RAG or the vector store.
+- The four specialist agents.
+- LangGraph orchestration from scratch.
+- The frontend/dashboard.
+- Feedback collection or DeepEval evaluation pipelines.
+
+Do not introduce CrewAI report drafting and validation unless an existing implementation already needs to be integrated and doing so is strictly necessary for this phase.
+
+## 14. Definition of done
+
+The phase is complete only when:
+
+1. The Quality Gate is integrated into the actual LangGraph workflow.
+2. Evidence, business identity, dates, calculations, and recommendations are checked.
+3. PII is masked before applicable LLM calls.
+4. Final-response decoding is role-controlled and occurs only after quality validation.
+5. The system distinguishes passed, flagged, and blocked results.
+6. Automated tests cover the major privacy and grounding failure cases.
+7. Existing working agents and retrieval functionality remain intact.
+8. Latency and validation results are measured and reported.
+9. The earlier stale-data, evidence-grounding, and concurrency-telemetry concerns are addressed or explicitly documented.
+
+At completion, report:
+- Files created and modified.
+- The implemented graph flow.
+- Exact commands to run tests.
+- Test results.
+- A sample validated response.
+- An example of a blocked or flagged response.
+- Measured validation latency.
+- Known limitations and unimplemented dependencies.
+
+Do not mark a feature complete merely because the code exists. Verify it through tests or explicitly report what remains unverified.

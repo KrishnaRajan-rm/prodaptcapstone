@@ -1,0 +1,812 @@
+# FINAL MILESTONE — Build a Complete AI-Powered Restaurant Operations Review Assistant
+
+You are a senior full-stack engineer, AI systems architect, and product designer. Your task is to complete the existing AI-Powered Restaurant Operations Review Assistant as a fully functional, end-to-end application.
+
+This is an existing project. The offline pipeline, Hybrid RAG, four specialist agents, LangGraph orchestration, and Quality Gate have already been implemented in previous milestones.
+
+Your job is to inspect the existing codebase, complete missing integration pieces, implement CrewAI drafting and answer consolidation if not already implemented, build the FastAPI backend integration, build a polished React dashboard, connect everything, and verify that the application works end to end.
+
+Do not replace working components with mock implementations. Do not create a visually impressive but functionally disconnected frontend.
+
+# PART 1 — NON-NEGOTIABLE ENGINEERING RULES
+
+## 1. Inspect before modifying
+
+Before writing code, inspect the complete repository structure and identify:
+
+- Existing backend framework, Python version, dependencies, and application entry point.
+- Existing React frontend, if present, and its framework, package manager, and conventions.
+- Hybrid RAG retrieval implementation and actual vector/keyword stores.
+- The four specialist agents, their input/output schemas, Agent Cards, A2A protocol clients, endpoints, ports, and health checks.
+- LangGraph graph, state schema, routing logic, parallel execution, and error handling.
+- PII Gate 2, Quality Gate, confidence calculation, grounding validation, and existing privacy safeguards.
+- Existing persistence layer, data schema, business identifiers, review metadata, and supported date filters.
+- Existing tests, configuration files, environment variables, and startup scripts.
+- Any existing CrewAI implementation, drafting task, validation task, or answer consolidation logic.
+
+Run the existing tests and identify baseline failures before changing the code.
+
+Produce a short implementation checklist, then continue with the implementation. Do not stop after the audit or ask me to approve routine engineering decisions.
+
+Preserve the existing architecture wherever it works. Reuse existing dependencies, services, schemas, and conventions. Avoid duplicating components.
+
+## 2. Existing system architecture
+
+The application should retain the following responsibilities:
+
+- Hybrid RAG: retrieves relevant restaurant reviews and operational evidence.
+- Classification Agent: complaint categories, aspects, sentiment, and severity.
+- Trend Analysis Agent: historical complaint trends, supported forecasts, and satisfaction predictions.
+- Root Cause Agent: evidence-backed hypotheses explaining operational problems.
+- Action Planner Agent: ranked corrective actions, suggested owners, and KPIs.
+- LangGraph: determines which agents are needed, coordinates parallel execution, manages dependencies, and handles failures.
+- CrewAI: drafts and consolidates multi-agent findings into a coherent manager-friendly report and performs a separate draft-validation step.
+- Quality Gate: checks evidence grounding, source traceability, data consistency, freshness, confidence, and unsupported claims.
+- FastAPI: exposes backend capabilities to the frontend.
+- React: provides the user interface and operational dashboards.
+- Feedback and evaluation: records manager feedback and supports later DeepEval evaluation.
+
+Use the actual implementation and data structures discovered in the repository. Do not assume a database table, model, endpoint, port, or field exists until verified.
+
+# PART 2 — COMPLETE THE CREWAI DRAFTING AND CONSOLIDATION LAYER
+
+This is a mandatory verification and implementation task.
+
+First determine whether CrewAI drafting and validation already exist. If they exist, integrate and test them. If they are missing or incomplete, implement them without duplicating the existing LangGraph orchestration or Quality Gate.
+
+## 2.1 Define the correct responsibility boundaries
+
+LangGraph remains the primary workflow orchestrator.
+
+The specialist agents remain independent services and retain their existing responsibilities.
+
+CrewAI is responsible for synthesizing completed specialist findings into one clear operational report and reviewing that draft against the available evidence.
+
+The Quality Gate remains the authoritative final validation stage.
+
+Do not move the entire graph into CrewAI. Do not replace LangGraph with CrewAI. Do not run every agent twice merely to produce a report.
+
+## 2.2 Implement a CrewAI drafting workflow
+
+Use CrewAI's supported APIs and the existing LLM provider configuration.
+
+Implement two narrowly scoped responsibilities:
+
+### A. Operations Report Drafter
+
+Inputs:
+
+- Original manager question.
+- Business scope and requested date range.
+- Outputs from only the agents that actually ran.
+- Retrieved evidence and source identifiers.
+- Trend calculations and forecast metadata, if available.
+- Root-cause hypotheses and their supporting evidence.
+- Ranked action recommendations and proposed KPIs.
+- Agent execution statuses and relevant warnings.
+
+Responsibilities:
+
+- Produce a concise executive summary.
+- Explain the main operational findings.
+- Identify the most important complaint categories and aspects.
+- Summarize worsening or improving trends only when supported by data.
+- Explain likely root causes while distinguishing hypotheses from established facts.
+- Present prioritized recommendations with rationale, proposed owners, and measurable KPIs.
+- Reference supporting evidence for material claims.
+- Report data limitations and historical cutoff dates.
+- Distinguish observed measurements from proposed targets and forecasts.
+- Avoid repeating identical information from multiple agents.
+
+The drafter must not invent review excerpts, numerical statistics, business IDs, trend values, or citations.
+
+### B. Operations Report Validator
+
+Validate the draft against the actual agent outputs, evidence, and Quality Gate inputs.
+
+Check:
+
+- Every material factual claim has traceable supporting evidence or a valid structured analytical result.
+- Numerical claims match the supplied data and calculations.
+- Recommendations are connected to identified operational issues.
+- Root-cause hypotheses are described with appropriate uncertainty.
+- Forecasts are not described as observed facts.
+- The report uses the correct business and date scope.
+- Conflicting agent results are surfaced rather than silently reconciled.
+- Unsupported claims, fabricated sources, and unsupported confidence statements are removed or flagged.
+- Stale data is disclosed.
+- No private information has been reintroduced into the draft.
+
+Return a structured validation result with findings, severity, claim references, and whether the draft can proceed.
+
+The validator is a drafting-stage check. The existing Quality Gate must still execute afterward.
+
+## 2.3 Conditional agent execution
+
+The system must support both common multi-agent analysis and individual-agent invocation.
+
+For a common question, LangGraph should select the relevant agents using explicit routing rules.
+
+Examples:
+
+- "Classify these complaints" → Classification Agent.
+- "Which complaint categories are increasing?" → Trend Analysis Agent, with classification or retrieval support only when needed.
+- "Why are customers complaining about long waits?" → retrieval and relevant classification/trend context, followed by Root Cause.
+- "What should the restaurant fix first?" → the necessary diagnostic agents, Root Cause when required, and Action Planner.
+- "Analyze the emerging problems, explain their causes, and recommend fixes" → Classification and Trend in parallel when both are required, then Root Cause, then Action Planner.
+
+Do not force all four agents to execute for every query.
+
+If multiple agents are required, consolidate their outputs through the CrewAI drafting workflow.
+
+For an individual-agent request, allow the selected agent to run independently and return its structured result. Do not force a full multi-agent report unless explicitly requested.
+
+The frontend must identify which agents ran, which were skipped, and why.
+
+## 2.4 CrewAI integration requirements
+
+- Use the existing provider and configuration; never hardcode credentials.
+- Use Pydantic or existing schemas for structured outputs.
+- Pass compact, relevant, masked context rather than entire raw datasets.
+- Preserve source identifiers through drafting and validation.
+- Keep the drafter and validator separate from the four specialist agents.
+- Handle timeout, malformed output, and LLM failure.
+- Do not report successful validation when validation failed or was skipped.
+- Do not let a CrewAI failure erase the original specialist outputs.
+- Preserve the Quality Gate as the final validation authority.
+- Add unit and integration tests.
+- Document the actual flow and report whether CrewAI ran successfully.
+
+If CrewAI is already implemented, fix or integrate the existing implementation rather than creating another crew with duplicate responsibilities.
+
+# PART 3 — FASTAPI BACKEND AND INTEGRATION
+
+Implement a thin FastAPI gateway. The API is the connection between React and the existing AI system, not another orchestration engine.
+
+Do not make the browser communicate directly with internal A2A agent services. Keep agent selection and orchestration in the backend.
+
+Use existing API conventions if already present. Otherwise, implement the following endpoint design.
+
+## 3.1 Common analysis
+
+### POST `/api/v1/analysis`
+
+Accept:
+
+- `query`: required question.
+- `mode`: `auto` or `agent`.
+- `agent`: required when `mode=agent`; one of the supported agent identifiers.
+- `business_id`: optional only if the current backend supports general scope.
+- `start_date` and `end_date`: optional supported date filters.
+- `filters`: optional metadata filters supported by the retrieval system.
+
+For `mode=auto`, route through the existing LangGraph workflow.
+
+For `mode=agent`, call the selected agent through the existing A2A interface.
+
+Return a validated, frontend-friendly response containing, where available:
+
+- Request ID.
+- Query and actual business/date scope.
+- Execution mode and selected agent.
+- Overall execution status.
+- Final consolidated report for multi-agent analysis.
+- Structured individual-agent output for individual-agent mode.
+- Complaint categories, aspects, sentiment, and severity.
+- Trend findings, actual data range, and forecast metadata.
+- Root-cause hypotheses and supporting evidence.
+- Ranked actions, proposed owners, and KPIs.
+- Evidence excerpts and source identifiers.
+- Quality Gate status, confidence information, and groundedness findings.
+- CrewAI drafting and validation status.
+- Agent execution trace and per-stage timings.
+- Warnings, partial failures, and data freshness information.
+
+Use explicit response schemas. Do not expose arbitrary internal graph state.
+
+### GET `/api/v1/agents/status`
+
+Report the actual status of each agent service.
+
+Use real health checks, A2A connectivity checks, or existing telemetry. If the service is unreachable or its status cannot be verified, report `unknown` or `unavailable` as appropriate.
+
+Do not report an agent as available simply because it is listed in configuration.
+
+### GET `/api/v1/health`
+
+Provide backend liveness and readiness information.
+
+Readiness should reflect required dependencies and service availability without leaking secrets or infrastructure details.
+
+### GET `/api/v1/analysis/{request_id}`
+
+Implement this if the project has, or can reasonably support, persisted analysis history. Return an existing result or a clear not-found response.
+
+Do not pretend in-memory state is durable persistence.
+
+### GET `/api/v1/scenarios`
+
+Return supported manager demonstration scenarios from a configuration or existing scenario registry.
+
+Each scenario should have a title, description, sample query, execution mode, and supported business/date filters.
+
+Use scenarios grounded in the actual restaurant dataset. Do not invent restaurant IDs or imply that unavailable data exists.
+
+### POST `/api/v1/feedback`
+
+Accept feedback against a completed request, including:
+
+- `request_id`.
+- A useful/not-useful rating.
+- Optional error categories.
+- Optional manager comments.
+
+Validate the request and persist feedback using the existing database if possible. If persistence is missing, implement a small, durable feedback store using the project's established database approach.
+
+Do not store unnecessary personal data or unmasked review content in feedback records.
+
+### GET `/api/v1/feedback/summary`
+
+Return aggregated feedback statistics when supported by the stored data.
+
+### GET `/api/v1/evaluation/summary`
+
+Return the latest actual evaluation results when available. Clearly distinguish results that have run from evaluations that are pending or unavailable.
+
+Do not fabricate DeepEval metrics.
+
+## 3.2 Execution trace contract
+
+Represent execution as structured events, not a single string.
+
+Each event should contain fields such as:
+
+- `event_id`.
+- `request_id`.
+- `stage`.
+- `component`.
+- `status`.
+- `started_at` and `finished_at`, when available.
+- `duration_ms`, when measurable.
+- `input_summary`, safely redacted.
+- `output_summary`, safely redacted.
+- `source_ids`, where applicable.
+- `warnings` or `error_summary`.
+
+Track meaningful events such as:
+
+1. Request validation and guardrails.
+2. Query planning and metadata filters.
+3. Hybrid retrieval and evidence selection.
+4. PII Gate 2.
+5. Classification and Trend branches, including actual overlap in execution.
+6. Root Cause.
+7. Action Planner.
+8. CrewAI drafting.
+9. CrewAI draft validation.
+10. Quality Gate.
+11. Final response preparation.
+
+Record skipped stages as skipped, not successful.
+
+Use actual timestamps and timings. Do not fabricate parallel execution or claim that an agent executed when it did not.
+
+If streaming progress is feasible within the existing architecture, expose Server-Sent Events through a dedicated endpoint. Otherwise, return the completed trace with truthful timings. Do not add WebSockets simply for decoration.
+
+## 3.3 Security and reliability
+
+- Validate incoming requests with Pydantic.
+- Configure CORS for the actual frontend origin.
+- Load secrets from environment variables or the existing configuration system.
+- Preserve existing PII masking and Quality Gate protections.
+- Never decode PII merely because the browser sends a role name.
+- Do not create a new role-based access-control feature unless an existing requirement or implementation demands it.
+- Never log raw sensitive review text or unmasked PII.
+- Use request IDs for correlation.
+- Implement appropriate timeouts and error responses.
+- Handle agent unavailability and partial failure explicitly.
+- Never fabricate results when an agent fails.
+- Keep logs and error responses free of secrets and stack traces.
+- Keep configuration for agent URLs and ports centralized.
+- Add tests for API validation, routing, privacy boundaries, error handling, and response schemas.
+
+# PART 4 — BUILD THE REACT FRONTEND
+
+Build a complete, responsive React dashboard using the existing frontend if available. Otherwise, use React, TypeScript, Vite, and a maintainable styling approach such as Tailwind CSS.
+
+Use Lucide icons or the existing icon library. Do not introduce a large UI component framework without a real need.
+
+The supplied screenshots are UX references for interaction patterns and information hierarchy, not assets to copy. This application must be designed specifically for restaurant operations.
+
+## 4.1 Visual direction: Apple-inspired operations dashboard
+
+The UI must look like a professionally designed enterprise application, not a generic AI-generated landing page.
+
+Design characteristics:
+
+- Apple-inspired simplicity and restrained typography.
+- Warm off-white or light neutral background.
+- White or near-white cards.
+- Deep charcoal text.
+- Muted gray secondary text.
+- One restrained accent color for interactive elements.
+- Green, amber, and red reserved for meaningful operational statuses.
+- Fine neutral borders and subtle shadows.
+- Consistent spacing, alignment, typography, and component dimensions.
+- Rounded corners used consistently and moderately.
+- Clear visual hierarchy and generous but efficient spacing.
+- Responsive desktop, tablet, and mobile layouts.
+
+Strictly avoid:
+
+- Blue or violet gradients.
+- Multicolored gradient backgrounds.
+- Excessive glassmorphism.
+- Unnecessary emojis.
+- Oversized hero sections and marketing-style layouts.
+- Excessive rounded pills and floating decorative shapes.
+- Random charts that do not reflect real data.
+- Huge headings, inconsistent card sizes, and poorly aligned text.
+- Fake online indicators, fake live timestamps, and fake activity.
+- Excessive animation or distracting loading effects.
+- Placeholder content that remains after integration.
+- Hardcoded sample metrics presented as real operational results.
+
+Use CSS variables or design tokens for the color palette, spacing, radii, borders, and typography. Use a consistent system font stack or an available, properly licensed font.
+
+Every text element, table, card, status badge, chart, tooltip, and expandable section must be formatted deliberately. Handle long review excerpts, large numbers, empty states, loading states, and error states cleanly.
+
+The dashboard should feel like a real operational tool used by a restaurant manager during the working day.
+
+## 4.2 Main application shell
+
+Build a proper application shell with:
+
+- A compact sidebar or navigation rail.
+- Application name: Restaurant Operations Assistant.
+- Clear page title and active navigation state.
+- Backend connection status based on real API checks.
+- Agent availability summary.
+- Main workspace.
+- Responsive behavior for smaller screens.
+
+Use these dashboard sections:
+
+1. Overview.
+2. Analyze Operations.
+3. Complaint Categories.
+4. Trends and Forecasts.
+5. Root Causes.
+6. Recommended Actions.
+7. Agent Activity.
+8. Feedback and Evaluation.
+
+Navigation should switch to meaningful pages or sections. Do not create empty navigation items that merely look clickable.
+
+## 4.3 Overview dashboard
+
+Show real information derived from existing data or actual API responses.
+
+Possible cards:
+
+- Total reviews in the active dataset.
+- Complaint count.
+- Most common complaint category.
+- Highest-priority operational issue.
+- Current analysis status.
+- Data coverage and last available review date.
+- Agent service availability.
+- Latest evaluation status, if available.
+
+Every metric must have a defined source and calculation.
+
+Display an appropriate empty state if a metric is unavailable. Do not fill missing data with invented numbers.
+
+Use charts only when actual time-series or category data is available. Include clear labels, units, date ranges, and tooltips.
+
+## 4.4 Analysis workspace
+
+This is the main interaction area.
+
+Provide two execution modes:
+
+### Mode A — Automatic LangGraph routing
+
+The manager enters a natural-language question. LangGraph decides which agents are required and orchestrates the workflow.
+
+### Mode B — Individual agent
+
+Provide a selector for:
+
+- Classification.
+- Trend Analysis.
+- Root Cause.
+- Action Planner.
+
+The selected agent can be invoked independently through the API for focused testing, demonstrations, and diagnosis.
+
+When an individual agent is selected, clearly indicate that the request bypasses the full multi-agent workflow. Do not imply that all agents executed.
+
+Include:
+
+- A well-designed multiline query input.
+- Optional supported business ID.
+- Optional start and end dates.
+- Supported metadata filters.
+- A clear Analyze button.
+- A Clear button.
+- A scenario selector.
+- Loading and progress states.
+- Cancel functionality only if cancellation is genuinely implemented.
+- Useful error messages and retry controls.
+
+Preserve the query when a request fails so the manager can retry.
+
+## 4.5 Quick practice scenarios
+
+Create scenario cards so that the user can demonstrate the application without manually typing every question.
+
+Load scenarios from the API or a shared scenario configuration. Make sure each scenario can actually run against the available dataset.
+
+Suggested scenario types:
+
+1. Emerging operational problems.
+2. Increasing complaint categories.
+3. Root causes behind repeated long waits.
+4. Food quality and temperature complaints.
+5. Staff behavior and customer satisfaction.
+6. Cleanliness and safety concerns.
+7. Pricing and value-for-money complaints.
+8. Recommended corrective actions.
+9. A combined multi-agent investigation.
+
+Use concise titles, descriptions, and sample questions.
+
+Each card must have a working action that populates the query and relevant filters. If a scenario is intended to run immediately, provide a clearly labeled run action.
+
+Do not invent business IDs or date ranges. Use actual known IDs from the available data, or leave the business filter empty when general scope is supported.
+
+## 4.6 Results dashboard
+
+Render analysis results in a clear, manager-friendly hierarchy.
+
+### A. Executive summary
+
+Show the consolidated report produced by CrewAI for multi-agent analysis.
+
+Use structured sections for:
+
+- Key findings.
+- Most important operational problems.
+- Evidence-backed root causes.
+- Prioritized recommendations.
+- Proposed owners and KPIs.
+- Limitations and next steps.
+
+Do not display a wall of raw JSON as the primary answer.
+
+### B. Confidence and Quality Gate panel
+
+Build a prominent but restrained status panel showing:
+
+- Quality Gate status: passed, flagged, or blocked.
+- Confidence score and its documented interpretation.
+- Evidence groundedness or validation results, using actual measured values where available.
+- Number of supporting evidence items.
+- Number of unsupported or flagged claims.
+- Data freshness and historical cutoff.
+- CrewAI draft-validation status.
+
+Clearly distinguish a computed confidence score from a calibrated probability.
+
+Do not label a result "approved" or "verified" when the corresponding check was skipped or failed.
+
+Do not invent a groundedness percentage. If the current Quality Gate provides only pass/fail or a non-numeric finding, display that honestly.
+
+If the result is blocked, visibly explain that the answer is restricted or invalid and avoid presenting it as a verified operational recommendation.
+
+### C. Complaint categories dashboard
+
+Display category counts, proportions, severity distribution, and supporting examples where the existing system can calculate them.
+
+Use filters consistent with the actual data schema.
+
+### D. Trends and forecasts dashboard
+
+Display actual historical trends and supported forecasts.
+
+Clearly separate:
+
+- Historical observations.
+- Current data coverage.
+- Forecast values.
+- Forecast horizon.
+- Model or evaluation limitations.
+
+If the latest available data is old, display the cutoff prominently. Do not label historical information as current.
+
+### E. Root causes dashboard
+
+Show each hypothesis separately, with:
+
+- Hypothesis.
+- Supporting evidence and source references.
+- Evidence relevance or validation status when available.
+- Confidence or uncertainty.
+- Alternative explanations and limitations, if produced by the backend.
+
+Make it clear that a root-cause hypothesis is not automatically a confirmed cause.
+
+### F. Action planner dashboard
+
+Display ranked recommendations in a sortable, readable table or compact cards.
+
+Include:
+
+- Priority rank.
+- Problem addressed.
+- Recommended action.
+- Rationale.
+- Proposed owner.
+- KPI and measurement method.
+- Proposed target, if supplied.
+- Evidence references.
+- Quality or validation warnings.
+
+Distinguish existing operational targets from targets proposed by the model.
+
+### G. Evidence explorer
+
+Allow the manager to inspect the review excerpts and source IDs that support important findings.
+
+Display available metadata such as review date, rating, aspect, and business scope when present.
+
+Preserve source traceability through retrieval, agents, CrewAI, and the Quality Gate.
+
+Do not fabricate missing metadata or source identifiers.
+
+## 4.7 Agent execution trace and explainability
+
+This is one of the most important features for the final demonstration and judging.
+
+Build an expandable execution timeline similar in interaction style to the supplied reference screenshot, adapted to the actual restaurant architecture.
+
+For each analysis request, display the real execution path, for example:
+
+Request received → Guardrails → Query planning → Hybrid retrieval → PII Gate 2 → Classification and Trend in parallel → Root Cause → Action Planner → CrewAI draft → Draft validation → Quality Gate → Final response.
+
+The actual path must depend on the executed workflow.
+
+For each stage, show:
+
+- Component or agent name.
+- Status.
+- Start time and duration, when available.
+- Safe input summary.
+- Safe output summary.
+- Evidence/source references.
+- Errors, warnings, or skipped-stage reason.
+- Whether execution overlapped with another stage.
+
+Make it possible for a judge to understand:
+
+1. What the manager asked.
+2. How LangGraph interpreted and routed the query.
+3. Which agents were selected and why.
+4. Which evidence was retrieved.
+5. What each agent concluded.
+6. How findings were combined.
+7. What CrewAI drafted and validated.
+8. What the Quality Gate accepted, flagged, or blocked.
+9. Why the final answer was produced.
+
+Show parallel execution using actual timestamps, not an assumed diagram.
+
+Provide expandable detail panels for agent output and evidence without overwhelming the default view.
+
+Always distinguish a real event from an inferred explanation.
+
+## 4.8 Real-time activity and agent status
+
+Create an Agent Activity page or dashboard section showing each agent's actual status:
+
+- Available.
+- Busy, if the service exposes or the backend tracks in-flight work.
+- Unavailable.
+- Unknown.
+
+Include the last successful health check or heartbeat, when available, and recent execution outcomes.
+
+Poll the actual status API at a reasonable interval, or use a real streaming mechanism if already available.
+
+Show a visible "Last checked" time. Stop or back off polling when appropriate.
+
+Never fake live activity, uptime, response times, successful runs, or availability. If the backend cannot determine whether an agent is busy, do not claim it is busy.
+
+## 4.9 Feedback and evaluation interface
+
+After a completed analysis, provide:
+
+- Useful / Not useful.
+- Optional error category.
+- Optional short comment.
+- Submission confirmation.
+- Existing feedback status where supported.
+
+Create a Feedback and Evaluation page with actual aggregated feedback and latest evaluation runs.
+
+Show DeepEval metrics only after they have genuinely been computed. Include evaluation dataset size, timestamp, and test status when available.
+
+Feedback must be persisted through the API. Do not treat a browser-local notification as saved feedback.
+
+# PART 5 — API CLIENT AND FRONTEND QUALITY
+
+Implement a typed frontend API client rather than scattering raw `fetch` calls across components.
+
+Requirements:
+
+- Centralized API base URL configuration.
+- Typed request and response models.
+- Consistent HTTP error handling.
+- Request correlation ID propagation where applicable.
+- Loading, empty, success, partial-success, flagged, blocked, and failure states.
+- Safe rendering of backend text.
+- No hardcoded secrets or credentials.
+- No silent replacement of API errors with sample data.
+- No direct browser calls to agent microservices.
+- No automatic duplicate submissions caused by component re-renders.
+- Correct handling of dates and time zones.
+- Accessible labels, keyboard navigation, focus indicators, and sufficient contrast.
+
+If the frontend already exists, improve it incrementally rather than replacing working features without reason.
+
+# PART 6 — PERSISTENCE AND FEEDBACK
+
+Inspect the current database and persistence mechanisms before adding storage.
+
+Persist analysis history, feedback, and execution traces only where appropriate and compatible with the existing design.
+
+If new persistence is necessary:
+
+- Use the existing database where feasible.
+- Define explicit schemas and migrations if the project uses them.
+- Avoid saving unnecessary raw review content.
+- Apply safe retention and error handling.
+- Ensure records can be correlated through request IDs.
+- Do not store fake results to populate the dashboard.
+
+The application must remain usable if historical analysis is unavailable, and it must communicate that limitation clearly.
+
+# PART 7 — EVALUATION AND TESTING
+
+Add or update tests across the backend, frontend, and integrated workflow.
+
+## Backend tests
+
+- Request validation.
+- Auto-routing and individual-agent routing.
+- Business/date/filter propagation.
+- A2A client invocation.
+- Parallel agent execution where applicable.
+- Root Cause and Action Planner dependency ordering.
+- CrewAI drafting and validation.
+- Quality Gate pass, flag, and block behavior.
+- Missing or malformed evidence.
+- Stale data warnings.
+- Agent timeout and failure.
+- Request ID and trace propagation.
+- Feedback persistence.
+- Health and agent availability responses.
+- PII leakage prevention.
+- Correct response schemas.
+
+## Frontend tests
+
+- Navigation.
+- Scenario selection.
+- Automatic and individual-agent modes.
+- API request and response rendering.
+- Quality Gate statuses.
+- Confidence and evidence panels.
+- Execution trace rendering.
+- Agent availability states.
+- Feedback submission.
+- Loading, empty, and error states.
+- Responsive layout for important screens.
+
+Use the existing testing framework. If none exists, choose lightweight tools suitable for the stack, such as pytest for Python and Vitest/React Testing Library for React.
+
+## End-to-end tests
+
+Exercise at least these flows:
+
+1. A common question that invokes multiple agents and returns a CrewAI-consolidated answer.
+2. A question routed to a single agent.
+3. A request that produces a flagged or blocked Quality Gate outcome.
+4. An unavailable agent or upstream service.
+5. A manager submits feedback for a completed request.
+
+Mock only when appropriate for unit tests. Clearly label mocked tests. Retain real integration tests for the actual services and graph.
+
+Do not claim full end-to-end success solely because mocked tests pass.
+
+# PART 8 — PERFORMANCE AND USER EXPERIENCE
+
+The previously observed orchestration latency was approximately 55 seconds for one run. Measure current end-to-end latency before and after integration.
+
+- Separate model cold-start time from request execution time where measurable.
+- Reuse loaded models and initialized clients.
+- Avoid duplicate retrieval or LLM calls.
+- Keep frontend rendering responsive during long-running analysis.
+- Provide genuine stage progress where telemetry exists.
+- Do not block the entire UI while displaying a static loading spinner.
+- Do not promise a response-time SLA without measurements.
+- Do not introduce caching that returns results for the wrong business, filters, or date range.
+
+If a workflow is long-running, use an asynchronous request pattern with a persisted job or reliable request-status mechanism rather than relying on a fragile browser connection.
+
+Do not implement unnecessary infrastructure if a simple request/response flow works reliably.
+
+# PART 9 — IMPLEMENTATION ORDER
+
+Complete the work in this order, while continuing through all steps without stopping for approval.
+
+1. Audit the repository and run baseline tests.
+2. Verify the current graph, A2A services, PII Gate 2, and Quality Gate integration.
+3. Implement or integrate CrewAI drafting and validation.
+4. Define stable backend request/response contracts.
+5. Implement FastAPI integration for common and individual-agent execution.
+6. Implement agent health/status and execution-trace endpoints.
+7. Implement scenario loading and feedback/evaluation endpoints.
+8. Build the React application shell and design system.
+9. Build the analysis workspace and quick-scenario interface.
+10. Build the results, confidence/grounding, category, trend, root-cause, and action dashboards.
+11. Build the agent activity and execution trace views.
+12. Connect feedback and evaluation.
+13. Add responsive behavior, error states, accessibility, and frontend tests.
+14. Run backend, frontend, and available end-to-end tests.
+15. Start the real services and verify the complete application.
+
+Do not finish after creating static pages or API stubs. Continue until the actual application works as far as the repository and environment permit.
+
+# PART 10 — DEFINITION OF DONE
+
+The project is complete only when:
+
+- The React application starts successfully.
+- The FastAPI backend starts successfully.
+- The frontend communicates with the real backend.
+- The backend routes common questions through the existing LangGraph graph.
+- Individual agents can be invoked independently.
+- Relevant agents execute in the correct order and in parallel where appropriate.
+- CrewAI drafts and validates multi-agent reports, or the existing implementation is verified and integrated.
+- The Quality Gate runs after drafting and validation and its real outcome reaches the frontend.
+- Evidence, confidence, data freshness, and validation findings are displayed honestly.
+- Execution traces show the actual query path, agent outputs, drafting steps, timings, and final status.
+- Agent availability reflects real checks.
+- Quick scenarios run against actual available data.
+- Feedback is persisted.
+- Evaluation metrics are real, not invented.
+- Backend and frontend tests pass, with any skipped tests disclosed.
+- The app can be started using documented commands.
+- No critical integration, privacy, or data-grounding issue is hidden.
+
+# PART 11 — FINAL DELIVERY REPORT
+
+When implementation is complete, report:
+
+1. Architecture and data flow.
+2. Files created or modified.
+3. Whether CrewAI existed beforehand and what was implemented.
+4. API endpoints and example requests.
+5. Frontend routes and dashboard sections.
+6. Environment variables required, without revealing their values.
+7. Exact commands to install dependencies, run tests, and start the application.
+8. Test results, distinguishing unit, integration, and end-to-end tests.
+9. Real execution latency and any cold-start measurements available.
+10. Known limitations, skipped tests, and remaining work.
+11. A demonstration sequence that shows individual-agent execution, automatic LangGraph routing, CrewAI consolidation, Quality Gate validation, and the execution trace.
+
+Do not mark a requirement complete unless it has been implemented and verified or its existing implementation has been inspected and tested.
+
+Prioritize a coherent, trustworthy, fully working application over adding unnecessary abstractions or visual effects.

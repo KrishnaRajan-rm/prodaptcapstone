@@ -1,0 +1,519 @@
+# PHASE 2 — Build Four Specialist Agents Using Google ADK and A2A
+
+## 1. Project Context
+
+I am building an **AI-Powered Restaurant Operations Review Assistant**.
+
+The offline data pipeline and Hybrid RAG system have already been implemented. The next task is to develop four independent specialist agents that analyze restaurant reviews and operational data.
+
+Build this phase inside the existing repository. This is an implementation task, not a request for a theoretical design or sample code.
+
+First inspect the entire relevant repository, understand the existing architecture, and identify the working interfaces before modifying any code.
+
+### Current completed components
+
+- Data ingestion and cleaning
+- PII Gate 1 and masked data processing
+- Review chunking and aspect tagging
+- Existing database and processed datasets
+- Existing BM25 and dense retrieval components
+- Hybrid retrieval and result fusion
+- Existing embedding configuration and source metadata
+
+Reuse these components. Do not rebuild or replace them.
+
+## 2. Mandatory Technology Stack
+
+Use the following technologies:
+
+- **Python** — implementation language
+- **Google ADK (`google-adk`)** — specialist agent framework
+- **A2A protocol** — communication between independently hosted agents
+- **Pydantic** — structured input/output schemas and validation
+- **pytest** — unit and integration tests
+- **Existing LLM provider** — reuse the configured provider and model
+- **Existing database and Hybrid RAG** — reuse their current interfaces
+- **HTTP** — expose independently accessible A2A services
+
+Inspect installed package versions and the existing dependency configuration first. Use compatible ADK and A2A SDK APIs. Do not invent imports, endpoints, classes, or methods.
+
+Do not introduce another agent framework in this phase.
+
+## 3. Required Architecture
+
+Implement exactly four specialist agents.
+
+| Agent | Service port | Primary responsibility |
+|---|---:|---|
+| Classification Agent | 8001 | Complaint classification and aspect analysis |
+| Trend Analysis Agent | 8002 | Historical trends and supported predictions |
+| Root-Cause Analysis Agent | 8003 | Evidence-backed root-cause hypotheses |
+| Action Planner Agent | 8004 | Prioritized operational recommendations |
+
+Each agent must:
+
+1. Be implemented using Google ADK.
+2. Be independently runnable.
+3. Expose an A2A-compatible service using the supported ADK/A2A integration.
+4. Publish an accessible Agent Card at the endpoint supported by the installed implementation.
+5. Accept requests from an A2A client and return structured results.
+6. Have appropriate input validation, error handling, logging, and tests.
+7. Return evidence references when making claims based on reviews or operational records.
+
+Separate ports are required because the agents must be independently testable and deployable. Merely creating four Python classes or four ordinary HTTP routes inside one server does not satisfy this requirement.
+
+Do not add a fifth specialist agent.
+
+## 4. Agent 1 — Classification Agent
+
+**Service:** Port 8001
+
+### Objective
+
+Analyze restaurant reviews and complaints to determine what went wrong, which aspect was affected, how customers feel, and how severe the issue is.
+
+### Required capabilities
+
+**A. Complaint classification**
+
+Support the following initial categories:
+
+- Service speed
+- Food quality
+- Cleanliness
+- Pricing
+- Staff behaviour
+- Other / uncategorized
+
+Allow multiple categories or aspects when a review genuinely concerns more than one issue, if the existing data model supports it.
+
+**B. Aspect-based analysis**
+
+Identify specific aspects mentioned in reviews, such as:
+
+- Waiting time
+- Food temperature
+- Taste and freshness
+- Hygiene
+- Staff responsiveness
+- Portion size
+- Value for money
+
+Reuse existing aspect tags and preprocessing outputs wherever possible. Do not create a conflicting taxonomy without a demonstrated need.
+
+**C. Sentiment analysis**
+
+Classify sentiment as positive, neutral, negative, or mixed where appropriate.
+
+**D. Severity assessment**
+
+Assign a documented severity level, such as low, medium, high, or critical. Explain the reason for the assessment and do not confuse sentiment with severity.
+
+**E. Structured output**
+
+Return validated fields equivalent to:
+
+- Review or request identifier
+- Category labels
+- Aspect labels
+- Sentiment
+- Severity
+- Short explanation
+- Supporting evidence and source chunk/review IDs
+- Warnings or uncertainty
+
+Use the actual project schema where one exists instead of blindly creating duplicate models.
+
+### Acceptance criteria
+
+- Valid reviews produce valid structured classifications.
+- Multiple issues in one review can be represented.
+- Unsupported categories are rejected or handled through the documented fallback.
+- Evidence references point to real source records.
+- Empty, malformed, or irrelevant inputs are handled correctly.
+- Tests cover positive, negative, mixed, ambiguous, and multi-aspect reviews.
+
+## 5. Agent 2 — Trend Analysis Agent
+
+**Service:** Port 8002
+
+### Objective
+
+Identify how restaurant complaints and operational issues change over time, and produce forecasts only when supported by the available data.
+
+### Required capabilities
+
+**A. Historical trend analysis**
+
+Use actual review dates, category/aspect counts, ratings, and relevant operational metrics available in the repository.
+
+Calculate:
+
+- Complaint counts over time
+- Category and aspect frequencies
+- Period-over-period changes
+- Increasing, decreasing, and stable trends
+- Rating or satisfaction changes where data supports them
+- Relevant restaurant or location comparisons when the data allows them
+
+Use deterministic queries and calculations for numeric results. Never ask an LLM to invent or estimate historical counts.
+
+**B. Complaint trend prediction**
+
+If there is sufficient historical data, implement a suitable forecasting baseline appropriate to the data volume and frequency.
+
+- Use chronological train/test splits where applicable.
+- Compare predictions with actual held-out observations.
+- Report the forecast horizon and evaluation metrics.
+- Avoid presenting a weak forecast as reliable.
+- Return an explicit insufficient-data status when a forecast cannot be justified.
+
+Do not introduce an unnecessarily complex forecasting model.
+
+**C. Customer satisfaction prediction — mandatory capability**
+
+Inspect the available ratings, satisfaction labels, review text, timestamps, and other permitted features.
+
+Determine whether a defensible customer satisfaction prediction can be built.
+
+If suitable labels exist:
+
+- Implement an appropriate baseline model or prediction method.
+- Define the prediction target clearly.
+- Separate training and evaluation data to prevent leakage.
+- Evaluate with suitable metrics, such as MAE for a numerical rating or appropriate classification metrics for categorical satisfaction.
+- Report performance and limitations.
+
+If suitable labels or sufficient data do not exist, report `insufficient_data` or the equivalent structured status. Do not fabricate predictions or claim that a prediction model is validated when it is not.
+
+Do not use future information to predict past satisfaction.
+
+**D. Structured output**
+
+Return:
+
+- Analysis period
+- Grouping and filters used
+- Observed metrics
+- Historical trends
+- Forecasts, if justified
+- Satisfaction predictions, if justified
+- Evaluation results where applicable
+- Source records and data provenance
+- Limitations and warnings
+
+### Acceptance criteria
+
+- Trend calculations match deterministic fixture data.
+- Date ranges and aggregation periods are correct.
+- Missing or invalid dates are handled explicitly.
+- Forecasts are evaluated on held-out data when applicable.
+- Satisfaction prediction does not silently disappear from the agent's capabilities.
+- Insufficient data produces a clear status instead of fabricated results.
+
+## 6. Agent 3 — Root-Cause Analysis Agent
+
+**Service:** Port 8003
+
+### Objective
+
+Investigate why recurring restaurant operational problems might be happening using review evidence and available operational data.
+
+### Required capabilities
+
+**A. Evidence gathering**
+
+Use the existing Hybrid RAG interface to retrieve relevant reviews when textual evidence is required.
+
+Use the existing database and processed datasets for factual information, counts, dates, and operational metrics.
+
+Do not duplicate retrieval logic or introduce a second vector database.
+
+**B. Root-cause hypotheses**
+
+Investigate plausible causes using:
+
+- Repeated complaint patterns
+- Affected aspects and complaint categories
+- Historical trends
+- Review timing and available operational context
+- Relevant restaurant or location attributes
+- Available staffing, service, or operational metrics, if present
+
+Do not assume operational information exists. Inspect the available schema and use only fields that actually exist.
+
+**C. Evidence and uncertainty**
+
+For every hypothesis, return:
+
+- Hypothesized cause
+- Supporting evidence
+- Supporting source IDs
+- Contradictory evidence, where available
+- Alternative explanations
+- Confidence or uncertainty assessment
+- Additional information needed to verify the hypothesis
+
+Clearly distinguish observed facts, statistical associations, and inferred explanations.
+
+For example, repeated long-wait complaints during a particular period may support investigating staffing or workload. They do not prove understaffing unless the available evidence establishes it.
+
+**D. Agent inputs**
+
+The agent must be callable independently with a problem description and relevant evidence.
+
+It must also accept structured classification and trend findings when supplied by a caller. Validate these inputs rather than assuming another agent has already executed.
+
+### Acceptance criteria
+
+- Hypotheses are linked to supporting source records.
+- Missing evidence is reported honestly.
+- Contradictory evidence is not silently discarded.
+- The agent does not claim causation from correlation alone.
+- Tests verify evidence references, uncertainty handling, and unsupported-cause rejection.
+
+## 7. Agent 4 — Action Planner Agent
+
+**Service:** Port 8004
+
+### Objective
+
+Turn validated operational findings into a prioritized, measurable action plan for restaurant managers.
+
+### Required capabilities
+
+**A. Issue prioritization**
+
+Rank identified issues using a documented scoring method based on available evidence, including:
+
+- Complaint frequency
+- Severity
+- Whether the issue is worsening
+- Operational impact, when supported by data
+
+Normalize scoring factors and document the weights, scale, missing-value handling, and interpretation.
+
+Do not pretend that an arbitrary score is an objectively measured business impact. Explain why each issue received its priority.
+
+**B. Recommendation generation**
+
+For each priority issue, provide:
+
+- Priority rank and score
+- Issue summary
+- Evidence-backed rationale
+- Recommended corrective action
+- Suggested owner role
+- Measurable KPI
+- Baseline value, if available
+- Target value, only if justified or clearly labelled as a proposed target
+- Measurement period
+- Dependencies and implementation considerations
+- Expected outcome and how it should be verified
+
+**C. Recommendations must be actionable**
+
+Avoid generic suggestions such as "improve service quality."
+
+Prefer specific proposals, such as investigating peak-period waiting times, measuring preparation delays, and reviewing service capacity.
+
+Do not invent staffing levels, financial losses, savings, revenue improvements, or baseline metrics.
+
+When the evidence is insufficient to prescribe a confident action, recommend the next investigation or measurement step.
+
+**D. Structured output**
+
+Return a ranked list of actions, the scoring explanation, evidence references, measurable KPIs, and limitations.
+
+### Acceptance criteria
+
+- Issues are ranked consistently for the same input.
+- Scores and ranking rationale are explainable.
+- Each recommendation includes a measurable way to assess progress.
+- Numeric business claims are grounded in actual data or explicitly marked as proposed targets.
+- Missing evidence does not lead to fabricated metrics.
+
+## 8. Shared Schemas and Evidence Provenance
+
+Create shared Pydantic schemas where appropriate, without changing existing database schemas unnecessarily.
+
+Use a consistent response envelope containing:
+
+- Agent identifier and execution status
+- Validated result payload
+- Evidence/source references
+- Warnings and limitations
+- Relevant execution metadata
+
+Each agent may have its own specialized result schema.
+
+Preserve existing review IDs, chunk IDs, restaurant IDs, timestamps, and metadata. Do not invent identifiers.
+
+Whenever a result relies on source evidence, make the reference traceable to the underlying record. Where practical, distinguish evidence used for retrieval from evidence actually used to support a claim.
+
+Validate incoming requests and agent-to-agent payloads. Do not trust data merely because it comes from another internal service.
+
+## 9. Hybrid RAG and Database Integration
+
+The existing Hybrid RAG is completed. Inspect its actual interfaces before integrating it.
+
+- Reuse its current BM25 and dense retrieval implementation.
+- Preserve its fusion, reranking, embedding model, metadata, and source IDs.
+- Reuse the current database and processed datasets.
+- Use RAG for retrieving textual evidence and deterministic database operations for numerical analysis.
+- Do not re-embed existing documents.
+- Do not rebuild indexes.
+- Do not create another vector database.
+- Do not replace working components just to fit a new tutorial or example.
+- If a required tool or field is unavailable, document the limitation and propose the smallest compatible change.
+
+The agents must not claim that they queried data or retrieved evidence unless the relevant operation actually succeeded.
+
+## 10. Google ADK and A2A Implementation
+
+Implement the agents using the installed, version-compatible Google ADK and A2A integration.
+
+For each service:
+
+1. Provide a clear agent entry point.
+2. Configure the agent's instructions, model and tools using the repository's existing configuration.
+3. Expose the agent through an A2A-compatible service.
+4. Publish the Agent Card using the supported endpoint and format.
+5. Accept A2A requests through a compatible client.
+6. Return the agent's structured result through the supported A2A response/task lifecycle.
+7. Handle failures, timeouts and invalid payloads gracefully.
+8. Keep credentials and sensitive configuration out of source control.
+
+Use these assigned ports:
+
+- Classification: `8001`
+- Trend Analysis: `8002`
+- Root Cause: `8003`
+- Action Planner: `8004`
+
+Avoid port conflicts by making ports configurable through environment variables while preserving these defaults.
+
+Provide separate startup commands or scripts for each service, plus a convenient way to start all four for local development.
+
+Document the Agent Card URLs and provide working example A2A client requests.
+
+Do not treat four independent ports alone as proof of A2A compliance. Verify actual A2A protocol interoperability using the compatible client and server implementations.
+
+## 11. Testing Requirements
+
+Create unit tests, service tests, and A2A integration tests.
+
+### Agent-level tests
+
+Test each agent independently with representative inputs, edge cases, and deterministic fixtures.
+
+### A2A service tests
+
+Verify:
+
+- Each service starts on its assigned port.
+- The Agent Card can be retrieved.
+- An A2A client can submit a request.
+- The service returns a valid result through the supported protocol.
+- Invalid requests and execution errors are handled appropriately.
+- One unavailable agent does not prevent the other services from starting.
+
+### Cross-cutting tests
+
+Verify:
+
+- Pydantic schema validation
+- Evidence ID preservation
+- Correct handling of missing data
+- No fabricated numeric results
+- Appropriate timeout and error handling
+- Existing Hybrid RAG tests still pass
+- Existing offline pipeline behaviour remains unchanged
+
+Mock LLM calls in tests where practical. Tests must not require paid API calls or external services unless explicitly marked as live integration tests.
+
+Do not claim a test passed unless it was executed successfully.
+
+## 12. Security and Privacy
+
+Reuse the existing PII Gate 1 protections and masked datasets.
+
+- Do not bypass existing masking.
+- Do not expose the PII vault to agents without an explicit existing authorization requirement.
+- Do not log raw sensitive review content unnecessarily.
+- Mask sensitive values in logs, errors, and traces.
+- Do not implement the future PII decoding workflow in this phase.
+- Do not add unsupported security claims or treat internal network access as authorization.
+
+This phase must preserve the privacy protections already implemented.
+
+## 13. Strict Scope Boundaries
+
+Implement only the four specialist agents and the infrastructure needed to run and test them.
+
+Do not implement yet:
+
+- LangGraph orchestration
+- CrewAI drafting or validation
+- Final application API and dashboard
+- Input guardrails and query planner, unless already present and needed for compatibility
+- PII Gate 2 or final-response PII decoding
+- Full quality gate or Confidence Score card
+- Feedback loop or DeepEval integration
+- A new ingestion, indexing, or retrieval pipeline
+
+These belong to later phases. Do not create placeholder agents for them.
+
+## 14. Required Deliverables
+
+Provide:
+
+1. Four Google ADK specialist agents.
+2. Four independently runnable A2A services on ports 8001–8004.
+3. Accessible Agent Cards and tested A2A request/response flows.
+4. Shared Pydantic schemas and utilities where appropriate.
+5. Database and Hybrid RAG integration using existing interfaces.
+6. Tests for each agent and the A2A services.
+7. Satisfaction prediction capability with honest data sufficiency and evaluation handling.
+8. Updated dependency and environment configuration.
+9. README with installation, configuration, startup, Agent Card, testing, and shutdown instructions.
+10. A requirements-to-implementation mapping.
+
+The mapping must include these requirements:
+
+- Complaint classification
+- Aspect-based analysis
+- Sentiment and severity assessment
+- Historical trend analysis
+- Complaint trend prediction
+- Customer satisfaction prediction
+- Evidence-backed root-cause analysis
+- Complaint prioritization
+- Actionable operational recommendations
+- Independent ADK agents
+- A2A interoperability
+- Evidence provenance
+- Existing Hybrid RAG compatibility
+
+For every requirement, record the implementation file, relevant test, and status: complete, partial, or blocked by insufficient data.
+
+## 15. Execution Instructions
+
+Work in this order:
+
+1. Inspect the repository and identify the existing architecture.
+2. Summarize the current relevant files, interfaces, dependencies, and any conflicts with the requested stack.
+3. Propose the smallest implementation plan that fits the repository.
+4. Implement the shared schemas and four agents.
+5. Implement the independent A2A services and startup configuration.
+6. Add tests and documentation.
+7. Run the available tests and resolve implementation issues.
+8. Verify the Agent Cards and real A2A request/response flows.
+9. Verify that the existing Hybrid RAG and offline pipeline remain intact.
+10. Produce a final report with files changed, commands executed, actual test results, requirement coverage, and remaining limitations.
+
+Do not stop after generating a plan or scaffolding. Implement the working phase wherever the repository and available environment permit.
+
+Do not silently skip requirements, fabricate test results, introduce unnecessary dependencies, or expand the scope.
+
+**Definition of done:** all four agents are independently runnable, their A2A interfaces are verified, their outputs are structured and evidence-aware, the required capabilities are implemented or explicitly marked as blocked by data limitations, and the existing completed components still work.

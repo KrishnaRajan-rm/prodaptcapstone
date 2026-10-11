@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     GENERATOR_CANDIDATES: str = "gemini/gemini-2.0-flash,openrouter/meta-llama/llama-3.3-70b-instruct:free"
     JUDGE_CANDIDATES: str = "openrouter/google/gemini-2.0-flash-exp:free,gemini/gemini-2.0-flash"
     LLM_RPM_LIMIT: int = 8
-    VIEWER_ROLE_DEFAULT: str = "analyst"
+    VIEWER_ROLE_DEFAULT: str = "manager"
 
     # Model parameters
     EMBEDDING_MODEL_NAME: str = "BAAI/bge-small-en-v1.5"

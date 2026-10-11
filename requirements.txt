@@ -1,0 +1,31 @@
+# Core API and configuration
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+
+# Data processing and storage
+duckdb
+numpy
+pandas
+pyarrow
+
+# Retrieval and NLP
+scikit-learn
+sentence-transformers
+rapidfuzz
+spacy
+vaderSentiment
+
+# Agent orchestration and protocols
+langgraph
+crewai
+google-adk
+a2a-sdk
+
+# Evaluation and testing
+pytest
+pytest-asyncio
+deepeval

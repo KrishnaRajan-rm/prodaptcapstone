@@ -1,0 +1,183 @@
+Act as a senior Python engineer specialising in information retrieval and RAG systems.
+
+I have already completed the offline data pipeline for my AI-Powered Restaurant Operations Review Assistant. I now want you to implement the Hybrid RAG retrieval system using my existing project.
+
+Your task is ONLY to build and test hybrid retrieval. Do not implement an API, input guardrails, query-planning agents, LLM agents, LangGraph, a dashboard, or answer-generation workflows in this task.
+
+### 1. Inspect my existing code
+
+Before coding, inspect the repository and identify:
+
+- The existing cleaned and masked review chunks.
+- The chunk metadata and stable chunk IDs.
+- The existing SQLite database and FTS5 index.
+- The existing dense vectors, vector-ID mapping and embedding model.
+- The configuration and dependency files.
+- Existing retrieval utilities and tests, if any.
+
+Read the actual schemas and implementation. Do not assume filenames, database columns, vector formats, embedding dimensions or model names.
+
+Reuse the existing artifacts. Do not rerun ingestion, cleaning, PII masking, chunking or document embedding unless a genuine inconsistency makes it necessary.
+
+The existing offline specification uses SQLite FTS5 for keyword search and precomputed dense-vector artifacts for semantic search. Follow the verified repository implementation. Do not introduce ChromaDB or Qdrant as another vector store simply to implement hybrid search.
+
+### 2. Implement BM25 keyword retrieval
+
+Create a reusable Python module that searches the existing SQLite FTS5 index.
+
+It must:
+
+- Accept a text query and configurable top-k value.
+- Return relevant review chunks using BM25 ranking.
+- Preserve chunk IDs, review IDs, restaurant IDs, review text and available metadata.
+- Return the raw BM25 score and original retrieval rank.
+- Handle empty queries, malformed search syntax and no-result cases safely.
+- Support metadata filtering using the existing schema.
+- Avoid rebuilding the index for each search.
+- Avoid returning chunks consisting only of PII masking placeholders.
+
+Use the existing schema and safe SQL parameterization. Verify the direction and interpretation of the FTS5 ranking score before using it.
+
+### 3. Implement dense semantic retrieval
+
+Create a separate reusable Python module that searches the existing dense-vector artifacts.
+
+It must:
+
+- Load the exact embedding model used by the offline pipeline.
+- Generate a query embedding compatible with the stored document vectors.
+- Respect the existing normalization, dimensions, maximum sequence length and vector data type.
+- Search the existing vectors using the appropriate similarity metric.
+- Return stable chunk IDs, text, metadata, similarity scores and retrieval ranks.
+- Correctly map every vector row to its original chunk.
+- Support the same applicable metadata filters as keyword retrieval.
+- Handle missing artifacts, incompatible dimensions and invalid mappings with clear errors.
+
+Load or memory-map the existing vectors efficiently. Do not recompute document embeddings for every query.
+
+If the repository uses a custom vector-search implementation, extend it instead of replacing it unnecessarily.
+
+### 4. Implement hybrid result fusion
+
+Combine the keyword and dense results using Reciprocal Rank Fusion (RRF).
+
+Use a configurable formula such as:
+
+RRF score = sum over retrieval systems of 1 / (k + rank)
+
+Use one-based ranks and a configurable RRF constant.
+
+Requirements:
+
+- Combine the two ranked lists.
+- Deduplicate using the stable chunk ID.
+- Preserve each candidate's BM25 score, dense similarity, source ranks and final fusion score.
+- Handle documents returned by only one retrieval method.
+- Support configurable retrieval depths and optional weights.
+- Return one unified ranked list.
+
+Do not directly add raw BM25 scores to cosine similarities because their scales are different.
+
+### 5. Implement reranking
+
+Add an optional reranking component that accepts the fused candidate list and orders candidates by their relevance to the original query.
+
+First inspect the project's available models, dependencies, hardware and design decisions. Reuse an existing compatible reranker if present. Otherwise, choose a practical configurable reranker and document its installation and model requirements.
+
+The reranker must preserve source IDs and metadata.
+
+Provide a clearly defined fallback that returns the fused ranking when reranking is disabled or unavailable. Never silently pretend reranking occurred when it did not.
+
+Do not claim the reranker improves results without evaluation.
+
+### 6. Build a single retrieval interface
+
+Expose a reusable Python function or class with an interface conceptually similar to:
+
+hybrid_search(
+    query,
+    top_k=10,
+    filters=None,
+    use_reranker=True
+)
+
+Adapt the exact signature to the existing project conventions.
+
+The returned results should include:
+
+- `chunk_id`
+- `review_id`
+- `business_id`
+- `text_masked`
+- Available restaurant and review metadata
+- `bm25_score`
+- `dense_similarity`
+- `bm25_rank`
+- `dense_rank`
+- `rrf_score`
+- `final_rank`
+- Reranker score when available
+
+Use the project's actual field names. Do not fabricate unavailable metadata. Keep PII masked and never access or expose the raw PII vault during retrieval.
+
+### 7. Test the retrieval system
+
+Create tests using the actual schemas and small fixtures.
+
+Include these example queries:
+
+- "waited an hour for food"
+- "slow service"
+- "rude staff"
+- "food was cold"
+- "restaurant cleanliness"
+
+Test:
+
+- BM25 retrieval independently.
+- Dense retrieval independently.
+- Hybrid fusion and rank ordering.
+- Duplicate removal.
+- Stable vector-to-chunk mapping.
+- Metadata filtering.
+- Missing and malformed inputs.
+- No-result behaviour.
+- PII placeholder handling.
+- Reranker enabled, disabled and fallback behaviour.
+
+Use deterministic fixtures for unit tests and the real offline artifacts for integration tests where available.
+
+Create a small relevance-labelled test set if possible. Compare BM25-only, dense-only, fused hybrid retrieval and reranked retrieval using Recall@k, MRR and nDCG where suitable relevance labels exist.
+
+Report actual measured results. Do not invent evaluation scores or assume that hybrid retrieval always outperforms the individual methods.
+
+### 8. Performance and documentation
+
+Measure retrieval latency and record timings for keyword search, dense search, fusion and reranking.
+
+Avoid repeatedly loading the embedding model or the full vector index for every query when safe reuse is possible.
+
+Document:
+
+- How to run keyword retrieval independently.
+- How to run dense retrieval independently.
+- How to run hybrid retrieval.
+- How to inspect returned scores and source IDs.
+- How to run the tests and evaluation.
+- Any missing dependencies, limitations or unverified behaviour.
+
+### 9. Execution instructions
+
+Work directly in the existing repository.
+
+First inspect the implementation and identify the exact files and artifacts to reuse. Then implement the retrieval modules, write tests, run them and fix the issues you discover.
+
+Do not stop after proposing an architecture or producing placeholder code. Complete as much of the implementation as the available environment permits, and clearly report anything that could not be verified.
+
+Do not modify or break the completed offline pipeline.
+
+### Definition of done
+
+This task is complete when I can run a Python function with a question and receive a deduplicated, ranked list of relevant review chunks using BM25 + dense retrieval + RRF, with optional reranking and traceable source IDs.
+
+Stop after delivering this working Hybrid RAG retrieval system. The next phase will handle the remaining online pipeline components.
