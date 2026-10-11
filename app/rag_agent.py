@@ -49,19 +49,28 @@ class RAGAnswer:
     filters: Optional[Dict[str, Any]] = None
 
     def display(self):
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 75)
         print(f"QUERY: {self.query}")
-        print("=" * 70)
-        print(f"MODEL: {self.model_used}")
-        print(f"TIMINGS: Retrieval = {self.timings_ms.get('retrieval_ms', 0):.1f}ms | LLM = {self.timings_ms.get('llm_ms', 0):.1f}ms | Total = {self.timings_ms.get('total_ms', 0):.1f}ms")
-        print("\n--- RETRIEVED EVIDENCE CHUNKS (Top 3) ---")
-        for idx, c in enumerate(self.retrieved_chunks[:3], 1):
-            score_str = f"Rerank: {c.rerank_score:.3f}" if c.rerank_score is not None else f"RRF: {c.rrf_score:.4f}"
-            print(f"[{idx}] {c.restaurant_name} ({c.city}, {c.state} - {c.stars}★) | Chunk: {c.chunk_id} | {score_str}")
-            print(f"    \"{c.text_masked[:120]}...\"\n")
+        print("=" * 75)
+        print(f"MODEL USED: {self.model_used}")
+        print(f"LATENCY: Retrieval = {self.timings_ms.get('retrieval_ms', 0):.1f}ms | LLM Generation = {self.timings_ms.get('llm_ms', 0):.1f}ms | Total = {self.timings_ms.get('total_ms', 0):.1f}ms")
+        if self.filters:
+            print(f"FILTERS APPLIED: {self.filters}")
+
+        print(f"\n--- RETRIEVED EVIDENCE CHUNKS ({len(self.retrieved_chunks)} Chunks) ---")
+        for idx, c in enumerate(self.retrieved_chunks, 1):
+            score_str = f"Rerank Score: {c.rerank_score:.3f}" if c.rerank_score is not None else f"RRF Score: {c.rrf_score:.4f}"
+            bm25_info = f"Rank {c.bm25_rank} (Score {c.bm25_score:.2f})" if c.bm25_rank is not None else "Not in BM25 top"
+            dense_info = f"Rank {c.dense_rank} (Cosine {c.dense_similarity:.3f})" if c.dense_rank is not None else "Not in Dense top"
+            print(f"[{idx}] {c.restaurant_name} ({c.city}, {c.state} | {c.stars}★) | Chunk: {c.chunk_id}")
+            print(f"    • Scores: {score_str} | BM25: {bm25_info} | Dense: {dense_info}")
+            print(f"    • Aspects: {c.aspects}")
+            print(f"    • Review Text: \"{c.text_masked}\"\n")
+
+        print("=" * 75)
         print("--- GENERATED ANSWER ---")
         print(self.answer)
-        print("=" * 70 + "\n")
+        print("=" * 75 + "\n")
 
 
 class RAGAssistant:
@@ -217,32 +226,39 @@ def main():
 
     assistant = RAGAssistant()
 
-    if args.interactive:
-        print("\n" + "=" * 70)
-        print("AI RESTAURANT OPERATIONS RAG ASSISTANT (Interactive Mode)")
-        print("Type your question and press Enter. Type 'exit' to quit.")
-        print("=" * 70 + "\n")
-        while True:
-            try:
-                user_q = input("\nEnter query > ").strip()
-                if not user_q:
-                    continue
-                if user_q.lower() in {"exit", "quit", "q"}:
-                    print("Exiting.")
-                    break
-                filters = {"city": args.city} if args.city else None
-                ans = assistant.answer_query(user_q, top_k=args.top_k, filters=filters)
-                ans.display()
-            except KeyboardInterrupt:
+    query = args.query
+    if not query:
+        print("\n" + "=" * 75)
+        print("AI RESTAURANT OPERATIONS RAG ASSISTANT")
+        print("=" * 75)
+        try:
+            query = input("Enter your question or operational query (or 'exit' to quit): ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting.")
+            return
+
+    if not query or query.lower() in {"exit", "quit", "q"}:
+        print("No query provided. Exiting.")
+        return
+
+    filters = {"city": args.city} if args.city else None
+    print(f"\n[Retrieving evidence & generating answer for query: '{query}']...")
+    ans = assistant.answer_query(query, top_k=args.top_k, filters=filters)
+    ans.display()
+
+    # Continuous prompt loop for subsequent questions
+    while True:
+        try:
+            followup = input("Ask another query (or press Enter / 'exit' to quit): ").strip()
+            if not followup or followup.lower() in {"exit", "quit", "q"}:
+                print("Session finished.")
                 break
-            except Exception as e:
-                print(f"Error: {e}")
-    else:
-        query = args.query or "waited an hour for food"
-        filters = {"city": args.city} if args.city else None
-        print(f"\n[Running RAG Agent for query: '{query}']...")
-        ans = assistant.answer_query(query, top_k=args.top_k, filters=filters)
-        ans.display()
+            print(f"\n[Retrieving evidence & generating answer for query: '{followup}']...")
+            ans = assistant.answer_query(followup, top_k=args.top_k, filters=filters)
+            ans.display()
+        except (KeyboardInterrupt, EOFError):
+            print("\nSession finished.")
+            break
 
 
 if __name__ == "__main__":
