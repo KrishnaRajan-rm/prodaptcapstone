@@ -17,6 +17,9 @@ import time
 from typing import Any, Dict, List, Optional
 import pytest
 import httpx
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from app.orchestration.schemas import (
     AgentTimingInfo,
@@ -522,3 +525,18 @@ async def test_16_total_and_per_agent_latency_instrumentation():
         assert timing.duration_ms >= 0
         assert timing.started_at > 0
         assert timing.ended_at >= timing.started_at
+
+
+@pytest.mark.asyncio
+async def test_a2a_http_error_is_returned_without_in_process_fallback():
+    async def unavailable_agent(request):
+        return JSONResponse({"detail": "classification service unavailable"}, status_code=503)
+
+    app = Starlette(routes=[Route("/classify", unavailable_agent, methods=["POST"])])
+    client = AsyncA2AAgentClient(app_registry={"classification": app})
+
+    with pytest.raises(RuntimeError, match="classification API returned HTTP 503") as error:
+        await client.classify_complaint("Slow service")
+
+    assert "classification service unavailable" in str(error.value)
+    await client.aclose()

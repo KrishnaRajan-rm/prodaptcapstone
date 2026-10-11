@@ -7,9 +7,11 @@ Covers scenarios 16, 19, 20:
 
 import asyncio
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 import pytest
 
+from app.api.routes import build_execution_trace
 from app.orchestration.schemas import OrchestrationRequest
 from app.orchestration.graph import run_orchestration_workflow
 from app.orchestration.a2a_async_client import AsyncA2AAgentClient
@@ -140,6 +142,79 @@ MOCK_EVIDENCE_FIXTURE = [
 ]
 
 
+def test_build_execution_trace_uses_real_evidence_without_placeholder_pii():
+    """Execution trace should reflect actual retrieved evidence rather than mock customer placeholders."""
+    res = SimpleNamespace(
+        business_id="BIZ_TRACE_001",
+        retrieved_evidence=[
+            {
+                "chunk_id": "chk_real_1",
+                "review_id": "rev_real_1",
+                "text_masked": "Waited 45 minutes for our order and the soup arrived cold.",
+                "text": "Waited 45 minutes for our order and the soup arrived cold.",
+            },
+            {
+                "chunk_id": "chk_real_2",
+                "review_id": "rev_real_2",
+                "text_masked": "Bar service was disorganized during peak hours.",
+                "text": "Bar service was disorganized during peak hours.",
+            },
+        ],
+        classification={"categories": ["Service"], "aspects": ["Waiting time"]},
+        trends={"worsening_aspects": ["Waiting time"]},
+        root_cause={"hypotheses": [{"hypothesized_cause": "Peak-period staffing gap"}]},
+        action_plan={"ranked_actions": [{"recommended_action": "Add a dedicated runner during lunch"}]},
+        crew_report={"executive_summary": "Summary with evidence-backed actions."},
+        crew_validation={"status": "passed"},
+        quality_decision="passed",
+        confidence_score=80.0,
+        warnings=[],
+        workflow_status="success",
+        agent_timings={
+            "classification": {"duration_ms": 145.0},
+            "trends": {"duration_ms": 132.0},
+            "root_cause": {"duration_ms": 118.0},
+            "action_planner": {"duration_ms": 121.0},
+        },
+        stage_timings={
+            "validate_request": {"started_at": 1.0, "finished_at": 1.01, "duration_ms": 10.0, "status": "completed"},
+            "retrieve_context": {"started_at": 1.01, "finished_at": 1.02, "duration_ms": 10.0, "status": "completed"},
+            "pii_gate_2": {"started_at": 1.02, "finished_at": 1.03, "duration_ms": 10.0, "status": "completed"},
+        },
+    )
+
+    events = build_execution_trace(request_id="req_placeholder_guard", query="Slow wait times", res=res, t_start=0.0)
+
+    trace_text = "\n".join(str(event.model_dump()) for event in events)
+    assert "Sarah Miller" not in trace_text
+    assert "smiller@gmail.com" not in trace_text
+    assert "555-0144" not in trace_text
+    assert "chk_real_1" in trace_text
+    assert "Waited 45 minutes for our order and the soup arrived cold." in trace_text
+    assert all(event.started_at is not None and event.duration_ms == 10.0 for event in events)
+    assert len(events) == 3
+
+
+def test_execution_trace_keeps_quality_verdict_separate_from_confidence():
+    res = SimpleNamespace(
+        business_id="BIZ_TRACE_002",
+        retrieved_evidence=[],
+        quality_decision="flagged",
+        confidence_score=80.0,
+        quality_gate={"decision": "flagged", "warnings": ["Recommendation is unsupported."]},
+        stage_timings={
+            "quality_gate": {"started_at": 2.0, "finished_at": 2.02, "duration_ms": 20.0, "status": "flagged"}
+        },
+    )
+
+    events = build_execution_trace(request_id="req_quality_verdict", query="Check service issues", res=res, t_start=0.0)
+
+    assert len(events) == 1
+    assert events[0].status == "flagged"
+    assert "80.0/80" in events[0].output_summary
+    assert events[0].output_payload["decision"] == "flagged"
+
+
 @pytest.mark.asyncio
 async def test_16_workflow_passed_route_with_analyst_and_manager():
     """16. Workflow passed route: verifies role-based decoding (masked for analyst, decoded for manager)."""
@@ -157,6 +232,8 @@ async def test_16_workflow_passed_route_with_analyst_and_manager():
     resp_analyst = await run_orchestration_workflow(req_analyst, client=mock_client)
 
     assert resp_analyst.workflow_status in ("success", "partial_success")
+    assert {"classification", "trends", "retrieve_context"}.issubset(resp_analyst.stage_timings)
+    assert resp_analyst.stage_timings["decode_pii_role"]["status"] == "skipped"
     assert resp_analyst.pii_decoded is False
     assert "[EMAIL_1]" in resp_analyst.query or "alice@mail.com" not in resp_analyst.query
 

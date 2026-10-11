@@ -17,6 +17,18 @@ from app.crew.schemas import (
 )
 
 
+def _fallback_issue_label(query: str) -> str:
+    """Generates a non-generic operational issue label when the specialist payload is incomplete."""
+    q = (query or "").lower()
+    if any(term in q for term in ("wait", "slow", "service", "throughput")):
+        return "Service throughput bottleneck during peak operating periods"
+    if any(term in q for term in ("food", "quality", "taste", "temperature")):
+        return "Food quality consistency and kitchen execution issues"
+    if any(term in q for term in ("staff", "behavior", "clean", "hygiene")):
+        return "Staff coordination and cleanliness compliance issues"
+    return "Operational bottleneck affecting customer experience"
+
+
 def build_compact_evidence_summary(
     evidence: List[Dict[str, Any]],
     classification: Optional[Dict[str, Any]],
@@ -74,7 +86,7 @@ def build_compact_evidence_summary(
         for act in action_plan.get("ranked_actions", []):
             if isinstance(act, dict):
                 rec = act.get("recommended_action", "")
-                prob = act.get("problem_addressed", "")
+                prob = act.get("problem_addressed") or act.get("issue_summary") or act.get("title") or "Operational bottleneck"
                 owner = act.get("owner_role", "kitchen_manager")
                 kpi = act.get("kpi", "N/A")
                 actions_summary.append(f"- Action: {rec} | For: {prob} | Owner: {owner} | KPI: {kpi}")
@@ -142,7 +154,7 @@ def deterministic_synthesize_report(
                 rec_actions.append(
                     RecommendedActionReport(
                         priority_rank=idx + 1,
-                        problem_addressed=a.get("problem_addressed", "Operational inefficiency"),
+                        problem_addressed=a.get("problem_addressed") or a.get("issue_summary") or a.get("title") or _fallback_issue_label(query),
                         recommended_action=a.get("recommended_action", "Review standard operating procedures"),
                         rationale=a.get("rationale", "Directly targets verified customer complaints"),
                         owner_role=a.get("owner_role", "manager"),
@@ -155,7 +167,7 @@ def deterministic_synthesize_report(
                 rec_actions.append(
                     RecommendedActionReport(
                         priority_rank=idx + 1,
-                        problem_addressed=query,
+                        problem_addressed=_fallback_issue_label(query),
                         recommended_action=a,
                         rationale="Targeted operational adjustment",
                         owner_role="manager",
@@ -254,9 +266,9 @@ def deterministic_synthesize_report(
         prioritized_recommendations=rec_actions or [
             RecommendedActionReport(
                 priority_rank=1,
-                problem_addressed=query,
+                problem_addressed=_fallback_issue_label(query),
                 recommended_action="Conduct operational floor review during peak meal times",
-                rationale="Directly targets friction points identified in recent feedback",
+                rationale="Directly targets friction points identified in recent feedback and verified service bottlenecks",
                 owner_role="manager",
                 kpi="Customer wait time / review score",
                 target="Proposed SLA adherence > 90%",
@@ -397,14 +409,5 @@ def run_crewai_draft_and_validate(
         return report, val, "success"
 
     except Exception as e:
-        logger.warning(f"CrewAI execution encountered non-fatal error ({e}); utilizing deterministic synthesis fallback.")
-        report, val = deterministic_synthesize_report(
-            query=query,
-            business_id=business_id,
-            evidence=evidence_list,
-            classification=classification,
-            trends=trends,
-            root_cause=root_cause,
-            action_plan=action_plan,
-        )
-        return report, val, "fallback"
+        logger.exception("CrewAI execution failed; no deterministic report fallback will be returned.")
+        raise RuntimeError(f"CrewAI report generation failed: {e}") from e

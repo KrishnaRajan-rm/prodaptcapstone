@@ -20,11 +20,29 @@ export class ApiClient {
     try {
       const response = await fetch(url, { ...options, headers });
       if (!response.ok) {
-        let errDetail = `HTTP ${response.status} ${response.statusText}`;
+        let errDetail = `HTTP ${response.status} ${response.statusText}`.trim();
         try {
           const errJson = await response.json();
-          if (errJson && errJson.detail) {
-            errDetail = errJson.detail;
+          const detail = errJson?.detail;
+          if (typeof detail === 'string') {
+            errDetail = `HTTP ${response.status}: ${detail}`;
+          } else if (detail && typeof detail === 'object') {
+            const description = detail.message || 'Request failed';
+            const causes = [detail.error, detail.cause, detail.action]
+              .filter((value) => typeof value === 'string' && value.length > 0);
+            if (detail.request_id) causes.unshift(`Request ID: ${detail.request_id}`);
+            const issueDetails = Array.isArray(detail) ? detail : detail.errors;
+            const issues = Array.isArray(issueDetails)
+              ? issueDetails.map((issue: any) => {
+                  const node = issue?.node ? `${issue.node}: ` : '';
+                  const location = Array.isArray(issue?.loc) ? `${issue.loc.join('.')}: ` : '';
+                  return `${node}${location}${issue?.error || issue?.msg || issue?.message || JSON.stringify(issue)}`;
+                })
+              : [];
+            const warnings = Array.isArray(detail.warnings)
+              ? detail.warnings.map((warning: any) => `Warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`)
+              : [];
+            errDetail = [`HTTP ${response.status}: ${description}`, ...causes, ...issues, ...warnings].join('\n');
           }
         } catch (_) {}
         throw new Error(errDetail);

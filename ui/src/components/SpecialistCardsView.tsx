@@ -348,7 +348,7 @@ export const SpecialistCardsView: React.FC<SpecialistCardsViewProps> = ({ type, 
                 </div>
 
                 <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '14px' }}>
-                  <strong>Problem Solved:</strong> {act.issue_summary || result.query}
+                  <strong>Problem Solved:</strong> {act.issue_summary || act.problem_addressed || 'Service throughput and guest experience issue'}
                 </p>
 
                 {act.evidence_rationale && (

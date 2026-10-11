@@ -59,11 +59,14 @@ def create_trend_app(port: int = 8002, host: str = "localhost") -> Starlette:
         try:
             body = await request.json()
             req = TrendAnalysisRequest.model_validate(body)
+        except Exception as e:
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+        try:
             result = trend_agent.analyze(req)
             return JSONResponse(result.model_dump())
         except Exception as e:
-            logger.error(f"Error in trends REST endpoint: {e}")
-            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+            logger.exception(f"Trend analysis execution failed: {e}")
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
     # Agent Card endpoint aliases
     async def get_agent_card(request: Request) -> JSONResponse:

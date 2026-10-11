@@ -140,9 +140,8 @@ RETRIEVED REVIEW EVIDENCE ({len(retrieved_chunks)} Chunks):
             )
             payload = RootCausePayload.model_validate(llm_result)
         except Exception as e:
-            logger.warning(f"Root Cause LLM synthesis failed, using rule-based synthesis: {e}")
-            payload = fallback_payload
-            model_used = "deterministic_evidence_synthesizer"
+            logger.exception("Root-cause LLM synthesis failed; no deterministic hypothesis response will be returned.")
+            raise RuntimeError(f"Root-cause analysis failed: {e}") from e
 
         # Construct traceable evidence references
         evidence_refs: List[EvidenceRef] = []

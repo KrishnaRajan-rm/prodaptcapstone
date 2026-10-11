@@ -69,36 +69,29 @@ def test_feedback_submission_and_summary(client):
     assert sum_data["average_rating"] >= 1.0
 
 
-def test_analysis_auto_mode(client):
-    req_payload = {
-        "query": "Investigate chronic dining delays and recommend operational fixes",
-        "mode": "auto",
-        "business_id": "biz_demo",
-        "viewer_role": "manager",
-        "skip_llm_judge": True,
-    }
-    resp = client.post("/api/v1/analysis", json=req_payload)
-    assert resp.status_code == 200
-    data = resp.json()
+def test_analysis_auto_mode_does_not_return_mock_report(client, monkeypatch):
+    monkeypatch.setattr("app.api.routes.settings.LLM_MODE", "mock")
+    response = client.post(
+        "/api/v1/analysis",
+        json={
+            "query": "Investigate chronic dining delays and recommend operational fixes",
+            "mode": "auto",
+        },
+    )
 
-    assert data["request_id"].startswith("req_")
-    assert data["workflow_status"] in ("success", "partial_success")
-    assert data["mode"] == "auto"
-    assert data["executive_summary"] is not None
-    assert data["crew_report"] is not None
-    assert data["quality_decision"] is not None
-    assert data["confidence_score"] is not None
-    assert len(data["execution_trace"]) >= 4
-
-    # Verify persistence by reading back
-    req_id = data["request_id"]
-    get_resp = client.get(f"/api/v1/analysis/{req_id}")
-    assert get_resp.status_code == 200
-    persisted = get_resp.json()
-    assert persisted["request_id"] == req_id
+    assert response.status_code == 503
+    assert "mock" in response.json()["detail"]["message"].lower()
 
 
-def test_analysis_single_agent_mode(client):
+def test_analysis_single_agent_mode(client, monkeypatch):
+    monkeypatch.setattr("app.api.routes.settings.LLM_MODE", "live")
+    monkeypatch.setenv("MOCK_LLM", "0")
+
+    class EmptyRetriever:
+        def search(self, **kwargs):
+            return []
+
+    monkeypatch.setattr("app.retrieval.hybrid.get_retriever", EmptyRetriever)
     req_payload = {
         "query": "Classify severe dining complaint regarding food temperature",
         "mode": "agent",
@@ -116,6 +109,48 @@ def test_analysis_single_agent_mode(client):
     assert "Single Agent Execution" not in data["executive_summary"]
     assert data["trends"] is None
     assert len(data["execution_trace"]) == 1
+    assert data["quality_decision"] is None
+    assert data["confidence_score"] is None
+    assert data["execution_trace"][0]["status"] == "completed"
+    assert data["execution_trace"][0]["started_at"] is not None
+    assert data["execution_trace"][0]["finished_at"] is not None
+
+
+def test_analysis_returns_configuration_error_instead_of_mock_answer(client, monkeypatch):
+    monkeypatch.setattr("app.api.routes.settings.LLM_MODE", "mock")
+
+    response = client.post(
+        "/api/v1/analysis",
+        json={"query": "Why are service times increasing?", "mode": "auto"},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["message"] == "Live analysis is disabled because LLM_MODE=mock."
+    assert "LLM_MODE=live" in detail["action"]
+
+
+def test_analysis_returns_upstream_failure_details(client, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("app.api.routes.settings.LLM_MODE", "live")
+    monkeypatch.setenv("MOCK_LLM", "0")
+
+    async def failed_workflow(**kwargs):
+        return SimpleNamespace(
+            workflow_status="failed",
+            quality_decision=None,
+            errors=[{"node": "classification", "type": "dependency_failure", "error": "classification API unavailable at localhost:8001"}],
+            warnings=[],
+        )
+
+    monkeypatch.setattr("app.api.routes.run_orchestration_workflow", failed_workflow)
+    response = client.post("/api/v1/analysis", json={"query": "Why is service slow?", "mode": "auto"})
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["message"] == "Analysis workflow failed; no fallback response was returned."
+    assert detail["errors"][0]["error"] == "classification API unavailable at localhost:8001"
 
 
 def test_evaluation_summary(client):

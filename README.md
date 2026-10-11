@@ -1,6 +1,6 @@
 # AI-Powered Restaurant Operations & Review Assistant
 
-An enterprise-grade, multi-agent AI operational intelligence system built on the **Yelp Open Dataset (2.2M+ customer reviews)**. It autonomously diagnoses restaurant friction points, classifies complaint aspects and severity, models historical trend trajectories, formulates evidence-grounded root causes, drafts executive operational reports via **CrewAI**, enforces strict **PII Gate 2** privacy boundaries, and validates recommendations through an authoritative **Quality Gate** and **DeepEval** evaluation benchmark.
+An AI operational intelligence system built on the Yelp Open Dataset. It retrieves historical review evidence, coordinates specialist agents, ranks proposed corrective actions, protects PII, and validates reports before returning them to managers.
 
 ---
 
@@ -8,13 +8,21 @@ An enterprise-grade, multi-agent AI operational intelligence system built on the
 
 ```mermaid
 flowchart TD
-    User["Manager / Executive (React UI / Streamlit)"]
+    User["Manager / Executive (React UI)"]
     API["FastAPI Gateway (Port 8000)"]
+
+    subgraph Offline_Build["Offline build, run once"]
+      Source["Yelp JSONL dataset"] --> Clean["Scope + clean<br/>DuckDB to Parquet"]
+      Clean --> Gate1["PII Gate 1<br/>Mask, keep vault"]
+      Gate1 --> Tag["Chunk + tag<br/>Aspect labels"]
+      Tag --> BM25["SQLite FTS5 index"]
+      Tag --> Vectors["Vector memmap index"]
+    end
     
     subgraph Privacy_and_Retrieval ["Privacy & Retrieval Subsystem"]
         PII["PII Gate 2 (Regex + spaCy NER + TokenVault)"]
         Hybrid["Hybrid RAG Engine (BM25 + Dense MiniLM-L6-v2 + RRF)"]
-        Parquet["Clean Parquet & Memmap Store (59.8k Vector Chunks)"]
+        Parquet["DuckDB / Parquet aggregates"]
     end
 
     subgraph LangGraph_Orchestrator ["LangGraph Workflow Coordinator"]
@@ -44,7 +52,9 @@ flowchart TD
     User -->|POST /api/v1/analysis| API
     API --> GraphStart
     GraphStart --> Hybrid
-    Hybrid <--> Parquet
+    BM25 --> Hybrid
+    Vectors --> Hybrid
+    Parquet --> A2
     Hybrid --> PII
     PII --> Fork
     Fork --> A1
@@ -66,7 +76,7 @@ flowchart TD
 ## Key Features
 
 1. **Hybrid RAG Semantic Retrieval**:
-   - BM25 full-text keyword indexing + dense 384-dimensional sentence transformer embeddings (`all-MiniLM-L6-v2`).
+    - BM25 full-text keyword indexing + normalized 384-dimensional `BAAI/bge-small-en-v1.5` embeddings.
    - Reciprocal Rank Fusion (RRF) and Cross-Encoder reranking over 59,894 indexed chunk vectors.
    - Metadata filtering across business IDs, cities (8 major metros), and star ratings.
 
@@ -90,9 +100,8 @@ flowchart TD
      $$\text{Score} = 100 \times \max(0, \min(1, 0.35 R_{\text{ev}} + 0.25 T_{\text{src}} + 0.20 A_{\text{agree}} - 0.20 P_{\text{stale}}))$$
    - LLM-as-Judge evaluation with bounded timeout fallback.
 
-6. **Dual Frontend Interfaces**:
-   - **React Dashboard** (Vite + TypeScript + Lucide): Apple-inspired operations workspace with timeline execution traces, scenario picker, and interactive tabs.
-   - **Streamlit Dashboard**: Lightweight Python UI for rapid demonstrations.
+6. **React Dashboard**:
+  - Vite + TypeScript + Lucide operations workspace with evidence, execution traces, scenarios, agent status, and feedback.
 
 ---
 
@@ -124,8 +133,6 @@ flowchart TD
 │   │   ├── judge.py             # LLM-as-Judge evaluator
 │   │   └── statistical.py       # Freshness & cutoff date disclosures
 │   ├── retrieval/               # Hybrid RAG engine (BM25 + Dense + RRF)
-│   ├── ui/                      # Streamlit alternative dashboard
-│   │   └── streamlit_app.py
 │   └── main.py                  # FastAPI Application entry point (Port 8000)
 ├── ui/                          # Apple-inspired React + TypeScript + Vite Dashboard
 │   ├── src/
@@ -136,7 +143,7 @@ flowchart TD
 ├── evaluation/
 │   └── deepeval_eval.py         # DeepEval recommendation evaluation benchmark
 ├── data_store/                  # Parquet aggregates, vector index, and SQLite DB
-└── tests/                       # 101 automated pytest unit & integration tests
+└── tests/                       # Automated pytest unit & integration tests
 ```
 
 ---
@@ -157,7 +164,11 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2. React UI Setup
+### 2. Live LLM Configuration
+
+Copy `.env.example` to `.env`, use `LLM_MODE=live` and `MOCK_LLM=0`, and configure `GOOGLE_API_KEY` or `OPENROUTER_API_KEY`. The analysis endpoint returns HTTP 503 in mock mode instead of presenting synthetic findings; service/provider failures include the reported cause.
+
+### 3. React UI Setup
 ```powershell
 cd ui
 npm install
@@ -186,12 +197,6 @@ npm run dev
 ```
 Open browser at `http://localhost:3000`.
 
-### Option C: Launch the Streamlit Alternative Dashboard
-```powershell
-streamlit run app/ui/streamlit_app.py
-```
-Open browser at `http://localhost:8501`.
-
 ---
 
 ## API Documentation & Sample Usage
@@ -207,6 +212,30 @@ The interactive Swagger UI is available at `http://localhost:8000/docs`.
   "viewer_role": "manager"
 }
 ```
+
+To inspect the ranked recommendations and evidence returned by a live request, run this in PowerShell after starting the gateway and agents:
+
+```powershell
+$body = @{
+  query = "What recurring service delays appear in reviews, and what should management fix first?"
+  mode = "auto"
+  business_id = "_ab50qdWOk0DdB6XOrBitw"
+  viewer_role = "manager"
+} | ConvertTo-Json
+
+$result = Invoke-RestMethod -Uri "http://localhost:8000/api/v1/analysis" `
+  -Method Post -ContentType "application/json" -Body $body
+
+$result.action_plan.ranked_actions |
+  Select-Object rank, issue_summary, recommended_action, owner_role, measurable_kpi, target_value |
+  Format-Table -AutoSize
+
+$result.retrieved_evidence |
+  Select-Object chunk_id, stars, text_masked |
+  Format-List
+```
+
+The example displays the recommendation and evidence produced for that request; no sample response is substituted as a result.
 
 ### 2. Single Agent Direct Invocation (`POST /api/v1/analysis`)
 ```json
@@ -231,6 +260,12 @@ Returns live connectivity and latency for ports 8001 through 8004.
 }
 ```
 
+## Project Deliverables
+
+- Architecture flow: Mermaid diagram at the top of this README, based on the supplied panel diagram.
+- Design decisions and trade-offs: [docs/DESIGN.md](docs/DESIGN.md)
+- Ten-minute panel demo: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)
+
 ---
 
 ## Verification & Test Results
@@ -241,14 +276,4 @@ $env:MOCK_LLM="1"
 pytest tests -v
 ```
 
-**Results: 101 passed, 0 failures across all suites**:
-- `tests/phase_0` (Ingestion & Schema): 5 passed
-- `tests/phase_1` (Preprocessing & Aggregates): 3 passed
-- `tests/phase_2` (Vector Store & Hybrid RAG): 4 passed
-- `tests/phase_3` (Specialist Agents & A2A Protocol): 4 passed
-- `tests/phase_4` (Quality Gate & Grounding): 2 passed
-- `tests/orchestration` (LangGraph & Concurrency): 17 passed
-- `tests/quality` (PII Gate 2, Confidence, DeepEval): 22 passed
-- `tests/crew` (CrewAI Drafter & Validator): 4 passed
-- `tests/api` (FastAPI Endpoints & SQLite): 7 passed
-- Microservice & Integration Tests: 33 passed
+Test counts vary by checkout and configured services. Use the command above for a result from the current tree. Tests may use mock mode internally; the public analysis endpoint refuses to present mock output as a live answer.

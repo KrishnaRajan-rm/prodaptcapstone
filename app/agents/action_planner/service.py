@@ -59,11 +59,14 @@ def create_action_planner_app(port: int = 8004, host: str = "localhost") -> Star
         try:
             body = await request.json()
             req = ActionPlannerRequest.model_validate(body)
+        except Exception as e:
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+        try:
             result = planner.analyze(req)
             return JSONResponse(result.model_dump())
         except Exception as e:
-            logger.error(f"Error in action-plan REST endpoint: {e}")
-            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+            logger.exception(f"Action-plan execution failed: {e}")
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
     # Agent Card endpoint aliases
     async def get_agent_card(request: Request) -> JSONResponse:

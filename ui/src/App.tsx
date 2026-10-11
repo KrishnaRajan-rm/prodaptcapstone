@@ -62,6 +62,7 @@ export const App: React.FC = () => {
   }) => {
     setIsAnalyzing(true);
     setErrorMsg(null);
+    setActiveResult(null);
     try {
       const res = await ApiClient.analyze(params);
       setActiveResult(res);
@@ -103,7 +104,7 @@ export const App: React.FC = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <AlertCircle size={18} color="var(--status-danger)" />
-              <span style={{ fontSize: '13.5px', color: 'var(--status-danger)', fontWeight: 500 }}>
+              <span style={{ fontSize: '13.5px', color: 'var(--status-danger)', fontWeight: 500, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                 {errorMsg}
               </span>
             </div>

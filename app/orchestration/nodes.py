@@ -66,25 +66,6 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
         if "preloaded_evidence" in filters and filters["preloaded_evidence"]:
             return {"retrieved_evidence": filters["preloaded_evidence"]}
 
-        # If a mock client is active, return deterministic synthetic evidence
-        if type(a2a_client).__name__.startswith("Mock"):
-            return {
-                "retrieved_evidence": [
-                    {
-                        "chunk_id": "chk_101",
-                        "review_id": "rev_mock_1",
-                        "business_id": state.get("business_id") or "BIZ_MOCK",
-                        "restaurant_name": "Test Restaurant",
-                        "city": state.get("city") or "Philadelphia",
-                        "state": "PA",
-                        "stars": 3.0,
-                        "text_masked": "Orders backed up for 40 minutes and soup was cold.",
-                        "aspects": "Waiting time, Food temperature",
-                        "score": 0.85,
-                    }
-                ]
-            }
-
         query = state["query"]
         top_k = state.get("top_k", 5)
         filters = dict(state.get("filters", {}))
@@ -122,7 +103,8 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
             logger.warning(f"Retrieval node encountered issue: {e}")
             return {
                 "retrieved_evidence": [],
-                "warnings": [f"Hybrid retrieval unavailable or yielded no results: {e}"]
+                "warnings": [f"Hybrid retrieval unavailable: {e}"],
+                "errors": [{"node": "retrieve_context", "error": str(e), "type": "dependency_failure"}],
             }
 
     async def pii_gate_2_node(state: OrchestrationState) -> Dict[str, Any]:
@@ -208,7 +190,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
             t_end = time.time()
             duration_ms = (t_end - t_start) * 1000
             logger.error(f"Classification agent failed: {e}")
-            err = {"node": agent_name, "error": str(e), "type": "execution_failure"}
+            err = {"node": agent_name, "error": str(e), "type": "dependency_failure"}
             return {
                 "classification_result": None,
                 "agent_statuses": {agent_name: "failed"},
@@ -256,7 +238,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
             t_end = time.time()
             duration_ms = (t_end - t_start) * 1000
             logger.error(f"Trend Analysis agent failed: {e}")
-            err = {"node": agent_name, "error": str(e), "type": "execution_failure"}
+            err = {"node": agent_name, "error": str(e), "type": "dependency_failure"}
             return {
                 "trend_analysis_result": None,
                 "agent_statuses": {agent_name: "failed"},
@@ -320,7 +302,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
         except Exception as e:
             t_end = time.time()
             duration_ms = (t_end - t_start) * 1000
-            err = {"node": agent_name, "error": str(e), "type": "execution_failure"}
+            err = {"node": agent_name, "error": str(e), "type": "dependency_failure"}
             return {
                 "root_cause_result": None,
                 "agent_statuses": {agent_name: "failed"},
@@ -381,7 +363,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
         except Exception as e:
             t_end = time.time()
             duration_ms = (t_end - t_start) * 1000
-            err = {"node": agent_name, "error": str(e), "type": "execution_failure"}
+            err = {"node": agent_name, "error": str(e), "type": "dependency_failure"}
             return {
                 "action_planning_result": None,
                 "agent_statuses": {agent_name: "failed"},
@@ -423,6 +405,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
                 "crew_status": "failed",
                 "crew_duration_ms": duration_ms,
                 "warnings": [f"CrewAI drafting encountered non-fatal error: {e}"],
+                "errors": [{"node": "crewai_consolidation", "error": str(e), "type": "execution_failure"}],
             }
 
     async def quality_gate_node(state: OrchestrationState) -> Dict[str, Any]:
@@ -541,7 +524,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
         success_count = sum(1 for a in all_agents if statuses.get(a) == "success")
 
         q_status = state.get("quality_gate_status", "passed")
-        if state.get("workflow_status") == "failed" or q_status == "blocked" or state.get("pii_blocked"):
+        if state.get("workflow_status") == "failed" or q_status == "blocked" or state.get("pii_blocked") or state.get("crew_status") == "failed":
             overall_status = "failed"
         elif success_count == len(all_agents):
             overall_status = "success"
@@ -604,7 +587,7 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
             "final_result": response.model_dump(),
         }
 
-    return {
+    node_functions = {
         "validate_request": validate_request_node,
         "retrieve_context": retrieve_context_node,
         "pii_gate_2": pii_gate_2_node,
@@ -617,4 +600,53 @@ def create_orchestration_nodes(client: Optional[AsyncA2AAgentClient] = None):
         "safe_blocked": safe_blocked_node,
         "decode_pii_role": decode_pii_role_node,
         "aggregate_results": aggregate_results_node,
+    }
+
+    async def track_node_execution(node_name: str, node_function: Any, state: OrchestrationState) -> Dict[str, Any]:
+        started_at = time.time()
+        updates = await node_function(state)
+        finished_at = time.time()
+        status = "completed"
+        if node_name in ("classification", "trends", "root_cause", "action_planner"):
+            status = updates.get("agent_statuses", {}).get(node_name, "skipped")
+        elif node_name == "retrieve_context" and any(
+            warning.startswith("Hybrid retrieval unavailable")
+            for warning in updates.get("warnings", [])
+        ):
+            status = "failed"
+        elif node_name == "validate_request" and updates.get("workflow_status") == "failed":
+            status = "failed"
+        elif node_name == "pii_gate_2" and updates.get("pii_blocked"):
+            status = "blocked"
+        elif node_name == "crewai_consolidation" and updates.get("crew_status") == "failed":
+            status = "failed"
+        elif node_name == "quality_gate":
+            status = updates.get("quality_gate_status", "completed")
+        elif node_name == "decode_pii_role" and updates.get("pii_decoded") is not True:
+            status = "skipped"
+        elif node_name == "safe_blocked":
+            status = "blocked"
+        return {
+            **updates,
+            "stage_timings": {
+                node_name: {
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "duration_ms": (finished_at - started_at) * 1000,
+                    "status": status,
+                    "error_message": updates.get("agent_errors", {}).get(node_name)
+                    or next((error.get("error") for error in updates.get("errors", []) if error.get("node") == node_name), None),
+                }
+            },
+        }
+
+    def wrap_node(node_name: str, node_function: Any):
+        async def tracked(state: OrchestrationState) -> Dict[str, Any]:
+            return await track_node_execution(node_name, node_function, state)
+
+        return tracked
+
+    return {
+        name: wrap_node(name, function)
+        for name, function in node_functions.items()
     }

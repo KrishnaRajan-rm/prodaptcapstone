@@ -21,6 +21,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
+from pydantic import ValidationError
 
 from app.core.logging import logger
 from app.orchestration.schemas import (
@@ -53,12 +54,14 @@ def create_orchestrator_app(
                 graph=compiled_graph
             )
             return JSONResponse(response.model_dump())
+        except ValidationError as e:
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=422)
         except Exception as e:
-            logger.error(f"Error in /orchestrate: {e}")
+            logger.exception(f"Error in /orchestrate: {e}")
             return JSONResponse({
                 "workflow_status": "failed",
                 "error": str(e),
-            }, status_code=400)
+            }, status_code=500)
 
     async def mermaid_handler(request: Request) -> PlainTextResponse:
         """Returns Mermaid flowchart diagram of the compiled LangGraph."""

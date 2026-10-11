@@ -6,6 +6,7 @@ import pytest
 os.environ["MOCK_LLM"] = "1"
 
 from app.agents.classification.agent import ClassificationAgent
+from app.agents.llm import LLMClient
 from app.agents.schemas import (
     ClassificationRequest,
     ComplaintCategory,
@@ -18,6 +19,28 @@ from app.agents.schemas import (
 @pytest.fixture
 def classifier():
     return ClassificationAgent()
+
+
+def test_llm_provider_failure_does_not_return_mock_response(monkeypatch):
+    client = LLMClient()
+    monkeypatch.setattr(client, "mock_mode", False)
+    monkeypatch.setattr(client, "_genai_client", None)
+    monkeypatch.setattr(client, "gemini_key", None)
+    monkeypatch.setattr(client, "openrouter_key", None)
+
+    with pytest.raises(RuntimeError, match="All live LLM providers failed"):
+        client.generate_json("prompt", mock_response={"classification": "placeholder"})
+
+
+def test_classification_failure_does_not_return_heuristic_result(classifier, monkeypatch):
+    def fail_generation(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(classifier.llm_client, "generate_json", fail_generation)
+    request = ClassificationRequest(review_id="rev_failure", text="The service was slow.")
+
+    with pytest.raises(RuntimeError, match="Classification analysis failed: provider unavailable"):
+        classifier.analyze(request)
 
 
 def test_positive_review_classification(classifier):

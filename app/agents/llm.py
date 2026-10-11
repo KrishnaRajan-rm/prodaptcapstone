@@ -58,6 +58,8 @@ class LLMClient:
         if self.mock_mode and mock_response is not None:
             return mock_response, "mock_llm"
 
+        failure_reasons: List[str] = []
+
         # Tier 1: Try Gemini API
         if self._genai_client:
             try:
@@ -73,8 +75,12 @@ class LLMClient:
                         validated = schema_cls.model_validate(parsed)
                         return validated.model_dump(), model_name
                     return parsed, model_name
+                failure_reasons.append("Gemini returned no valid JSON response.")
             except Exception as e:
+                failure_reasons.append(f"Gemini failed: {type(e).__name__}: {e}")
                 logger.warning(f"Gemini generation failed ({e}), attempting OpenRouter failover...")
+        else:
+            failure_reasons.append("Gemini is not configured with an API key.")
 
         # Tier 2: OpenRouter Free Models Failover
         if self.openrouter_key:
@@ -102,6 +108,7 @@ class LLMClient:
                         json=payload,
                         timeout=40
                     )
+                    resp.raise_for_status()
                     if resp.status_code == 200:
                         data = resp.json()
                         choices = data.get("choices", [])
@@ -114,16 +121,16 @@ class LLMClient:
                                         validated = schema_cls.model_validate(parsed)
                                         return validated.model_dump(), f"openrouter/{candidate}"
                                     return parsed, f"openrouter/{candidate}"
+                        failure_reasons.append(f"OpenRouter model {candidate} returned no valid JSON response.")
                 except Exception as ex:
+                    failure_reasons.append(f"OpenRouter model {candidate} failed: {type(ex).__name__}: {ex}")
                     logger.warning(f"OpenRouter candidate {candidate} failed: {ex}")
                     continue
+        else:
+            failure_reasons.append("OpenRouter is not configured with an API key.")
 
-        # Tier 3: If mock_response provided, return it
-        if mock_response is not None:
-            logger.info("Using mock response fallback")
-            return mock_response, "mock_fallback"
-
-        raise RuntimeError("All LLM generation backends (Gemini and OpenRouter failover) failed.")
+        details = "; ".join(failure_reasons[-4:])
+        raise RuntimeError(f"All live LLM providers failed. {details}")
 
     def _extract_json(self, text: Optional[str]) -> Optional[Dict[str, Any]]:
         """Extracts JSON dict from code fences or raw text."""

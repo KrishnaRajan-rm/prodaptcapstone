@@ -59,11 +59,14 @@ def create_root_cause_app(port: int = 8003, host: str = "localhost") -> Starlett
         try:
             body = await request.json()
             req = RootCauseRequest.model_validate(body)
+        except Exception as e:
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+        try:
             result = rc_agent.analyze(req)
             return JSONResponse(result.model_dump())
         except Exception as e:
-            logger.error(f"Error in root-cause REST endpoint: {e}")
-            return JSONResponse({"status": "error", "error": str(e)}, status_code=400)
+            logger.exception(f"Root-cause execution failed: {e}")
+            return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
     # Agent Card endpoint aliases
     async def get_agent_card(request: Request) -> JSONResponse:

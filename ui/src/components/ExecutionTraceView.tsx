@@ -57,7 +57,7 @@ export const ExecutionTraceView: React.FC<ExecutionTraceViewProps> = ({
           </div>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '3px' }}>
             Request ID: <code>{requestId || 'N/A'}</code> • Total Pipeline Latency:{' '}
-            <strong>{totalDurationMs ? `${(totalDurationMs / 1000).toFixed(2)}s` : '0.5s'}</strong>
+            <strong>{totalDurationMs ? `${(totalDurationMs / 1000).toFixed(2)}s` : 'Unavailable'}</strong>
           </p>
         </div>
 
@@ -73,7 +73,13 @@ export const ExecutionTraceView: React.FC<ExecutionTraceViewProps> = ({
 
       {/* Timeline Stream */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
-        {events.map((event, idx) => {
+        {events.length === 0 ? (
+          <div className="card" style={{ padding: '18px' }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              The server did not return execution events for this request.
+            </p>
+          </div>
+        ) : events.map((event, idx) => {
           const isExpanded = expandedEvents[event.event_id] ?? false;
           return (
             <div
@@ -84,7 +90,7 @@ export const ExecutionTraceView: React.FC<ExecutionTraceViewProps> = ({
                 borderLeft: `4px solid ${
                   event.status === 'completed'
                     ? 'var(--status-success)'
-                    : event.status === 'blocked'
+                    : event.status === 'blocked' || event.status === 'failed'
                     ? 'var(--status-danger)'
                     : event.status === 'skipped'
                     ? 'var(--border-strong)'
@@ -97,6 +103,7 @@ export const ExecutionTraceView: React.FC<ExecutionTraceViewProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   {event.status === 'completed' && <CheckCircle2 size={18} color="var(--status-success)" />}
                   {event.status === 'blocked' && <XCircle size={18} color="var(--status-danger)" />}
+                  {event.status === 'failed' && <XCircle size={18} color="var(--status-danger)" />}
                   {event.status === 'flagged' && <AlertTriangle size={18} color="var(--status-warning)" />}
                   {event.status === 'skipped' && <Clock size={18} color="var(--text-tertiary)" />}
 

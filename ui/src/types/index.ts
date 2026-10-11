@@ -99,6 +99,7 @@ export interface AnalysisResponse {
   staleness_disclosure?: string;
 
   agent_timings: Record<string, any>;
+  stage_timings: Record<string, any>;
   execution_trace: ExecutionTraceEvent[];
   warnings: string[];
   errors: any[];

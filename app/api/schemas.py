@@ -71,10 +71,14 @@ class AnalysisResponse(BaseModel):
 
     # Telemetry and Execution Trace
     agent_timings: Dict[str, Any] = Field(default_factory=dict)
+    stage_timings: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     execution_trace: List[ExecutionTraceEvent] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     errors: List[Dict[str, Any]] = Field(default_factory=list)
     provenance: Dict[str, Any] = Field(default_factory=dict)
+    pii_masked: bool = False
+    pii_decoded: bool = False
+    viewer_role: str = "analyst"
 
 
 class AgentStatusInfo(BaseModel):

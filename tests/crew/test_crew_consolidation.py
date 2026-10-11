@@ -83,6 +83,22 @@ def test_run_crewai_draft_and_validate_mock():
     assert len(report.key_findings) > 0
 
 
+def test_fallback_action_does_not_repeat_raw_query():
+    report, _, _ = run_crewai_draft_and_validate(
+        query="Why is service slow?",
+        business_id="biz_test",
+        evidence=[{"chunk_id": "c1", "text": "slow service"}],
+        classification=None,
+        trends=None,
+        root_cause=None,
+        action_plan=None,
+    )
+
+    first = report.prioritized_recommendations[0]
+    assert "Why is service slow?" not in first.problem_addressed
+    assert "service" in first.problem_addressed.lower() or "operational" in first.problem_addressed.lower()
+
+
 @pytest.mark.asyncio
 async def test_workflow_executes_with_crewai_consolidation():
     """Verify that full LangGraph orchestration includes CrewAI drafting and validation."""

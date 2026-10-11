@@ -45,44 +45,6 @@ export const AnalysisWorkspace: React.FC<AnalysisWorkspaceProps> = ({
   const [city, setCity] = useState<string>('New Orleans');
   const [showFilters, setShowFilters] = useState<boolean>(true);
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
-  const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-
-  const pipelineStages = [
-    { title: '1. Input Guardrails', desc: 'Validating safety, constraints & format' },
-    { title: '2. Hybrid RAG Retrieval', desc: 'Searching dense vectors + lexical BM25 fusion' },
-    { title: '3. PII Interceptor Gate 2', desc: 'Presidio masking & token vaulting' },
-    { title: '4. Parallel Specialist Agents', desc: 'Classification & Trend Analysis execution' },
-    { title: '5. Root-Cause Analysis', desc: 'Synthesizing evidence-backed hypotheses' },
-    { title: '6. Action Planner Agent', desc: 'Formulating ranked actions & KPIs' },
-    { title: '7. CrewAI Consensus Drafter', desc: 'Synthesizing unified manager report' },
-    { title: '8. CrewAI Report Validator', desc: 'Grounding verification & privacy audit' },
-    { title: '9. Master Quality Gate', desc: 'Grounding, staleness & confidence scoring' },
-    { title: '10. Reversible PII Decoder', desc: 'Decoding context for authorized manager' },
-  ];
-
-  useEffect(() => {
-    let timer: any;
-    let stepTimer: any;
-    if (isLoading) {
-      setElapsedSeconds(0);
-      setActiveStepIndex(0);
-      timer = setInterval(() => {
-        setElapsedSeconds((s) => s + 1);
-      }, 1000);
-      stepTimer = setInterval(() => {
-        setActiveStepIndex((prev) => (prev < pipelineStages.length - 1 ? prev + 1 : prev));
-      }, 1000);
-    } else {
-      setActiveStepIndex(0);
-      setElapsedSeconds(0);
-    }
-    return () => {
-      clearInterval(timer);
-      clearInterval(stepTimer);
-    };
-  }, [isLoading]);
-
   useEffect(() => {
     ApiClient.getScenarios()
       .then((data) => setScenarios(data))
@@ -329,78 +291,12 @@ export const AnalysisWorkspace: React.FC<AnalysisWorkspaceProps> = ({
                   }}
                 />
                 <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Active Execution State: {pipelineStages[activeStepIndex].title}
+                  Active Execution State: Running pipeline
                 </span>
               </div>
               <span className="badge badge-neutral" style={{ fontSize: '12px' }}>
-                Elapsed: {elapsedSeconds}s • Stage {activeStepIndex + 1} of {pipelineStages.length}
+                Waiting for workflow result
               </span>
-            </div>
-
-            {/* Progress Bar */}
-            <div style={{ width: '100%', height: '6px', background: 'var(--border-subtle)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${((activeStepIndex + 1) / pipelineStages.length) * 100}%`,
-                  height: '100%',
-                  background: 'var(--accent)',
-                  transition: 'width 0.4s ease',
-                }}
-              />
-            </div>
-
-            {/* Stepper items */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: '8px',
-                marginTop: '4px',
-              }}
-            >
-              {pipelineStages.map((stg, i) => {
-                const isDone = i < activeStepIndex;
-                const isCurrent = i === activeStepIndex;
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '12px',
-                      color: isCurrent ? 'var(--accent)' : isDone ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                      fontWeight: isCurrent ? 700 : isDone ? 500 : 400,
-                    }}
-                  >
-                    {isDone ? (
-                      <CheckCircle2 size={14} color="var(--status-success)" />
-                    ) : isCurrent ? (
-                      <span
-                        style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          background: 'var(--accent)',
-                          display: 'inline-block',
-                          boxShadow: '0 0 6px var(--accent)',
-                        }}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          background: 'var(--border-strong)',
-                          display: 'inline-block',
-                        }}
-                      />
-                    )}
-                    <span>{stg.title}</span>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}

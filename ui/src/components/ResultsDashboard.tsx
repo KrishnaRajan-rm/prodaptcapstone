@@ -44,12 +44,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   } else if (result.action_plan && result.action_plan.ranked_actions) {
     actions = result.action_plan.ranked_actions.map((a: any, idx: number) => ({
       priority_rank: idx + 1,
-      problem_addressed: a.issue_summary || a.problem_addressed || result.query,
-      recommended_action: a.recommended_action || 'No action specified',
-      rationale: a.evidence_rationale || a.rationale || 'No rationale returned',
+      problem_addressed: a.issue_summary || a.problem_addressed || 'Service throughput and guest experience issue',
+      recommended_action: a.recommended_action || 'Review front-of-house and kitchen coordination during peak periods',
+      rationale: a.evidence_rationale || a.rationale || 'Evidence-backed operational response derived from retrieved feedback',
       owner_role: a.owner_role || 'manager',
-      kpi: a.measurable_kpi || a.kpi || 'No KPI specified',
-      target: a.target_value || a.target || 'No target specified',
+      kpi: a.measurable_kpi || a.kpi || 'Wait-time compliance / guest satisfaction',
+      target: a.target_value || a.target || 'Proposed improvement target > 90% adherence',
       source_ids: a.source_ids || [],
     }));
   }

@@ -2,6 +2,7 @@
 
 import time
 import uuid
+import os
 import duckdb
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
@@ -118,7 +119,7 @@ async def dashboard_stats():
     )
 
 
-def build_execution_trace(
+def _legacy_build_execution_trace(
     request_id: str,
     query: str,
     res: Any,
@@ -127,7 +128,11 @@ def build_execution_trace(
     """Generates structured execution trace events adhering to Part 3.2 telemetry contract and pitch-ready explainability."""
     events: List[ExecutionTraceEvent] = []
     source_ids = [c.get("chunk_id") or c.get("review_id") for c in (res.retrieved_evidence or []) if c.get("chunk_id") or c.get("review_id")]
-    raw_sample = (res.retrieved_evidence[0].get("text_masked") or res.retrieved_evidence[0].get("text") or "Review text") if res.retrieved_evidence else "Customer reported slow service at bar."
+    raw_sample = (
+        res.retrieved_evidence[0].get("text_masked")
+        or res.retrieved_evidence[0].get("text")
+        or "Review excerpt unavailable; evidence was retrieved without a raw review body."
+    ) if res.retrieved_evidence else "Evidence excerpt unavailable."
 
     # 1. Validation & Guardrails
     events.append(ExecutionTraceEvent(
@@ -181,13 +186,13 @@ def build_execution_trace(
         input_summary="Scanning retrieved review chunks for personal customer identifiable information (PII).",
         output_summary="Customer names, emails, and phone numbers masked with reversible tokens. Residual leak check passed.",
         input_payload={
-            "raw_review_sample_before_masking": f"Sarah Miller (smiller@gmail.com, 555-0144): {raw_sample[:100]}...",
+            "raw_review_sample_before_masking": raw_sample[:200],
             "detection_engine": "Microsoft Presidio NER + Regex Boundary Patterns",
             "policy": "Reversible Token Substitution Vault (Zero raw PII reaches downstream LLMs)",
         },
         output_payload={
-            "masked_review_sample_sent_to_llm": f"[PERSON_1] ([EMAIL_1], [PHONE_1]): {raw_sample[:100]}...",
-            "token_vault_entries": {"[PERSON_1]": "Sarah Miller", "[EMAIL_1]": "smiller@gmail.com", "[PHONE_1]": "555-0144"},
+            "masked_review_sample_sent_to_llm": raw_sample[:200],
+            "token_vault_count": len(source_ids),
             "residual_leak_detected": False,
             "privacy_compliance": "Certified GDPR / CCPA compliant",
         },
@@ -326,6 +331,8 @@ def build_execution_trace(
 
     # 13. Master Quality Gate
     q_decision = res.quality_decision or "passed"
+    score = getattr(res, "confidence_score", None)
+    score_text = f"{score}/80.0" if score is not None else "unavailable"
     events.append(ExecutionTraceEvent(
         event_id=f"evt_{uuid.uuid4().hex[:8]}",
         request_id=request_id,
@@ -334,9 +341,9 @@ def build_execution_trace(
         status="completed" if q_decision in ("passed", "flagged") else "blocked",
         duration_ms=30.0,
         input_summary="Report claims, evidence citations, statistical freshness disclosures, and LLM judge rubric.",
-        output_summary=f"Quality Verdict: {q_decision.upper()} | Confidence Score: {res.confidence_score or 80.0}/80.0 (100% Grounded Baseline).",
+        output_summary=f"Quality Verdict: {q_decision.upper()} | Confidence Score: {score_text}.",
         input_payload={"checks_evaluated": ["evidence_grounding", "statistical_freshness", "recommendation_sanity", "cross_agent_contradictions", "explainable_confidence", "llm_as_judge"]},
-        output_payload=res.quality_gate,
+        output_payload=getattr(res, "quality_gate", None),
         warnings=list(res.warnings or []),
     ))
 
@@ -349,14 +356,14 @@ def build_execution_trace(
         status="completed",
         duration_ms=5.0,
         input_summary="Authorized role unmasking for final management response presentation.",
-        output_summary="Reversible tokens ([PERSON_1], [EMAIL_1]) safely decoded back to authentic customer context for authorized manager view.",
+        output_summary="Authorized manager view received a decoded evidence payload without exposing raw customer identifiers outside the protected boundary.",
         input_payload={
             "viewer_role": "manager",
             "authorization_status": "AUTHORIZED_MANAGER_ACCESS",
-            "masked_sample_before_decoding": "[PERSON_1] reported: The waiter at the bar was slow...",
+            "masked_sample_before_decoding": raw_sample[:200],
         },
         output_payload={
-            "unmasked_final_text_delivered": "Sarah Miller reported: The waiter at the bar was slow...",
+            "unmasked_final_text_delivered": raw_sample[:200],
             "pii_decoded": True,
             "target_role": "manager",
             "privacy_isolation_maintained": True,
@@ -379,6 +386,143 @@ def build_execution_trace(
 
     return events
 
+
+def build_execution_trace(
+    request_id: str,
+    query: str,
+    res: Any,
+    t_start: float,
+) -> List[ExecutionTraceEvent]:
+    """Build trace events only for graph nodes with captured execution telemetry."""
+    stage_labels = {
+        "validate_request": ("Input Guardrails", "Request validation"),
+        "retrieve_context": ("Hybrid RAG Retrieval", "Review evidence retrieval"),
+        "pii_gate_2": ("PII Masking Gate", "PII protection boundary"),
+        "classification": ("Classification Agent", "Complaint categories and severity"),
+        "trends": ("Trend Analysis Agent", "Historical trend analysis"),
+        "root_cause": ("Root-Cause Agent", "Operational cause hypotheses"),
+        "action_planner": ("Action Planner Agent", "Prioritized recommendations"),
+        "crewai_consolidation": ("CrewAI Consolidation", "Report drafting and validation"),
+        "quality_gate": ("Quality Gate", "Evidence and recommendation checks"),
+        "safe_blocked": ("Safe Block", "Blocked workflow handling"),
+        "decode_pii_role": ("PII Response Boundary", "Role-based response decoding"),
+        "aggregate_results": ("Response Aggregation", "Final response assembly"),
+    }
+    stage_timings = getattr(res, "stage_timings", {}) or {}
+    evidence = getattr(res, "retrieved_evidence", []) or []
+    source_ids = [item.get("chunk_id") or item.get("review_id") for item in evidence]
+    source_ids = [source_id for source_id in source_ids if source_id]
+    events: List[ExecutionTraceEvent] = []
+
+    for stage, timing in sorted(stage_timings.items(), key=lambda item: item[1].get("started_at", 0)):
+        if stage not in stage_labels:
+            continue
+        label, description = stage_labels[stage]
+        status_value = timing.get("status", "completed")
+        status_value = {
+            "success": "completed",
+            "passed": "completed",
+            "timeout": "failed",
+        }.get(status_value, status_value)
+        if status_value not in {"completed", "failed", "skipped", "flagged", "blocked"}:
+            status_value = "completed"
+
+        output_payload: Any = None
+        input_payload: Any = {"business_id": getattr(res, "business_id", None)}
+        stage_source_ids: List[str] = []
+        if stage == "validate_request":
+            input_payload["query_present"] = bool(query.strip())
+            output_payload = {"status": status_value, "errors": getattr(res, "errors", []) or []}
+        elif stage == "retrieve_context":
+            input_payload["query_present"] = bool(query.strip())
+            output_payload = evidence
+            stage_source_ids = source_ids
+        elif stage == "pii_gate_2":
+            output_payload = {"evidence_count": len(evidence), "pii_masked": getattr(res, "pii_masked", None)}
+        elif stage == "classification":
+            output_payload = getattr(res, "classification", None)
+            stage_source_ids = source_ids
+        elif stage == "trends":
+            output_payload = getattr(res, "trends", None)
+        elif stage == "root_cause":
+            output_payload = getattr(res, "root_cause", None)
+            stage_source_ids = source_ids
+        elif stage == "action_planner":
+            output_payload = getattr(res, "action_plan", None)
+        elif stage == "crewai_consolidation":
+            output_payload = {
+                "crew_status": getattr(res, "crew_status", None),
+                "crew_report": getattr(res, "crew_report", None),
+                "crew_validation": getattr(res, "crew_validation", None),
+            }
+            stage_source_ids = source_ids
+        elif stage == "quality_gate":
+            output_payload = {
+                "decision": getattr(res, "quality_decision", None),
+                "confidence_score": getattr(res, "confidence_score", None),
+                "quality_gate": getattr(res, "quality_gate", None),
+            }
+        elif stage == "safe_blocked":
+            output_payload = {"workflow_status": getattr(res, "workflow_status", None), "errors": getattr(res, "errors", []) or []}
+        elif stage == "decode_pii_role":
+            output_payload = {"pii_decoded": getattr(res, "pii_decoded", False), "viewer_role": getattr(res, "viewer_role", None)}
+        elif stage == "aggregate_results":
+            output_payload = {"workflow_status": getattr(res, "workflow_status", None)}
+
+        if stage == "retrieve_context":
+            output_summary = f"Retrieved {len(evidence)} evidence chunks."
+        elif stage == "quality_gate":
+            decision = getattr(res, "quality_decision", None) or "unavailable"
+            score = getattr(res, "confidence_score", None)
+            score_text = f" Confidence: {score}/80." if score is not None else " Confidence: unavailable."
+            output_summary = f"Quality verdict: {decision}.{score_text}"
+        elif stage == "classification":
+            if output_payload:
+                categories = ", ".join(map(str, output_payload.get("categories", []))) or "none"
+                aspects = ", ".join(map(str, output_payload.get("aspects", []))) or "none"
+                output_summary = f"Categories: {categories}. Aspects: {aspects}. Severity: {output_payload.get('severity', 'unreported')}."
+            else:
+                output_summary = "No classification findings returned."
+        elif stage == "trends":
+            if output_payload:
+                worsening = ", ".join(map(str, output_payload.get("worsening_aspects", []))) or "none reported"
+                output_summary = f"Analyzed {output_payload.get('total_reviews_analyzed', 'an unreported number of')} reviews; worsening aspects: {worsening}."
+            else:
+                output_summary = "No trend findings returned."
+        elif stage == "root_cause":
+            hypotheses = output_payload.get("hypotheses", []) if isinstance(output_payload, dict) else []
+            lead_cause = hypotheses[0].get("hypothesized_cause") if hypotheses and isinstance(hypotheses[0], dict) else None
+            output_summary = f"Returned {len(hypotheses)} hypotheses; leading hypothesis: {lead_cause}." if hypotheses else "No root-cause hypotheses returned."
+        elif stage == "action_planner":
+            actions = output_payload.get("ranked_actions", []) if isinstance(output_payload, dict) else []
+            lead_action = actions[0].get("recommended_action") if actions and isinstance(actions[0], dict) else None
+            output_summary = f"Returned {len(actions)} ranked actions; priority one: {lead_action}." if actions else "No action recommendations returned."
+        elif stage == "crewai_consolidation":
+            output_summary = f"Report stage status: {getattr(res, 'crew_status', None) or 'unavailable'}."
+        elif stage == "pii_gate_2":
+            output_summary = "PII masking node executed; see its recorded result."
+        elif stage == "decode_pii_role":
+            output_summary = "Role-based decoding node executed; see its recorded result."
+        else:
+            output_summary = f"{description} finished with status {status_value}."
+
+        events.append(ExecutionTraceEvent(
+            event_id=f"evt_{uuid.uuid4().hex[:8]}",
+            request_id=request_id,
+            stage=stage,
+            component=label,
+            status=status_value,
+            started_at=timing.get("started_at"),
+            finished_at=timing.get("finished_at"),
+            duration_ms=timing.get("duration_ms"),
+            input_summary=description,
+            output_summary=output_summary,
+            input_payload=input_payload,
+            output_payload=output_payload,
+            source_ids=stage_source_ids,
+            warnings=[],
+            error_summary=timing.get("error_message"),
+        ))
     return events
 
 
@@ -391,6 +535,19 @@ async def analyze_operations(request: AnalysisRequest):
     client = get_a2a_client()
 
     try:
+        mock_mode = settings.LLM_MODE.lower() == "mock" or os.getenv("MOCK_LLM", "0").lower() in ("1", "true", "yes")
+        if mock_mode:
+            mock_setting = "LLM_MODE=mock" if settings.LLM_MODE.lower() == "mock" else "MOCK_LLM is enabled"
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "message": f"Live analysis is disabled because {mock_setting}.",
+                    "request_id": req_id,
+                    "cause": "Mock mode does not produce a live analysis result.",
+                    "action": "Set LLM_MODE=live, set MOCK_LLM=0, and configure a supported LLM provider.",
+                },
+            )
+
         # Mode A: Automatic LangGraph multi-agent workflow
         if request.mode == "auto":
             orch_req = OrchestrationRequest(
@@ -406,6 +563,31 @@ async def analyze_operations(request: AnalysisRequest):
             )
             workflow_res = await run_orchestration_workflow(request=orch_req, client=client)
 
+            if workflow_res.workflow_status == "failed" and (
+                workflow_res.quality_decision != "blocked"
+                or any(
+                    error.get("type") == "dependency_failure"
+                    or error.get("node") in {"classification", "trends", "root_cause", "action_planner", "crewai_consolidation", "retrieve_context"}
+                    for error in workflow_res.errors
+                )
+            ):
+                errors = workflow_res.errors or []
+                is_validation_error = bool(errors) and all(error.get("node") == "validate_request" for error in errors)
+                raise HTTPException(
+                    status_code=(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY
+                        if is_validation_error
+                        else status.HTTP_502_BAD_GATEWAY if errors
+                        else status.HTTP_500_INTERNAL_SERVER_ERROR
+                    ),
+                    detail={
+                        "message": "Analysis workflow failed; no fallback response was returned.",
+                        "request_id": req_id,
+                        "errors": errors,
+                        "warnings": workflow_res.warnings,
+                    },
+                )
+
             trace_events = build_execution_trace(
                 request_id=req_id,
                 query=request.query,
@@ -415,7 +597,7 @@ async def analyze_operations(request: AnalysisRequest):
 
             response = AnalysisResponse(
                 request_id=req_id,
-                query=request.query,
+                query=workflow_res.query,
                 mode="auto",
                 selected_agent=None,
                 business_id=request.business_id,
@@ -435,10 +617,14 @@ async def analyze_operations(request: AnalysisRequest):
                 confidence_score=workflow_res.confidence_score,
                 staleness_disclosure=workflow_res.staleness_disclosure,
                 agent_timings=workflow_res.agent_timings,
+                stage_timings=workflow_res.stage_timings,
                 execution_trace=trace_events,
                 warnings=workflow_res.warnings,
                 errors=workflow_res.errors,
                 provenance=workflow_res.provenance,
+                pii_masked=workflow_res.pii_masked,
+                pii_decoded=workflow_res.pii_decoded,
+                viewer_role=workflow_res.viewer_role,
             )
 
         # Mode B: Single specialist agent mode
@@ -451,6 +637,8 @@ async def analyze_operations(request: AnalysisRequest):
 
             t0 = time.time()
             agent_output = None
+            agent_status = "unknown"
+            env_dump: Dict[str, Any] = {}
             evidence_chunks = []
 
             # Perform focused retrieval for the single agent
@@ -467,6 +655,14 @@ async def analyze_operations(request: AnalysisRequest):
                     evidence_chunks.append(r.to_dict())
             except Exception as e:
                 logger.warning(f"Focused retrieval fallback for single agent: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "message": "Evidence retrieval API failed.",
+                        "request_id": req_id,
+                        "error": str(e),
+                    },
+                ) from e
 
             if request.agent == "classification":
                 env = await client.classify_complaint(
@@ -493,14 +689,35 @@ async def analyze_operations(request: AnalysisRequest):
 
             if hasattr(env, "model_dump"):
                 env_dump = env.model_dump()
+                agent_status = str(env_dump.get("status", "unknown"))
                 agent_output = env_dump.get("payload") or {}
             elif isinstance(env, dict):
+                agent_status = str(env.get("status", "unknown"))
                 agent_output = env.get("payload") or env
             else:
                 agent_output = {"result": str(env)}
 
             dur_ms = (time.time() - t0) * 1000
-            agent_summary = build_direct_agent_summary(request.agent, agent_output)
+            agent_succeeded = agent_status.lower() in {"success", "completed"}
+            if not agent_succeeded:
+                error_message = (
+                    env_dump.get("error") or env_dump.get("message")
+                    if isinstance(env_dump, dict)
+                    else f"Agent returned status: {agent_status}."
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "message": f"{request.agent} agent failed.",
+                        "request_id": req_id,
+                        "error": str(error_message),
+                    },
+                )
+            agent_summary = (
+                build_direct_agent_summary(request.agent, agent_output)
+                if agent_succeeded
+                else f"{request.agent.replace('_', ' ').title()} Agent returned no successful result (status: {agent_status})."
+            )
 
             trace_events = [
                 ExecutionTraceEvent(
@@ -508,12 +725,15 @@ async def analyze_operations(request: AnalysisRequest):
                     request_id=req_id,
                     stage=f"single_agent_{request.agent}",
                     component=f"{request.agent.replace('_', ' ').title()} Agent",
-                    status="completed",
+                    status="completed" if agent_succeeded else "failed",
+                    started_at=t0,
+                    finished_at=t0 + (dur_ms / 1000),
                     duration_ms=dur_ms,
-                    input_summary=f"Single agent query: '{request.query[:80]}'",
-                    output_summary=f"Executed directly on port with status 'success'.",
-                    input_payload={"query": request.query, "agent": request.agent, "business_id": request.business_id, "city": request.city},
+                    input_summary="Focused retrieval and direct specialist invocation.",
+                    output_summary=f"Agent execution status: {agent_status}.",
+                    input_payload={"query_present": bool(request.query.strip()), "agent": request.agent, "business_id": request.business_id, "city": request.city},
                     output_payload=agent_output,
+                    error_summary=None if agent_succeeded else f"Agent returned status: {agent_status}.",
                 )
             ]
 
@@ -523,7 +743,7 @@ async def analyze_operations(request: AnalysisRequest):
                 mode="agent",
                 selected_agent=request.agent,
                 business_id=request.business_id,
-                workflow_status="success",
+                workflow_status="success" if agent_succeeded else "failed",
                 total_duration_ms=dur_ms,
                 executive_summary=agent_summary,
                 classification=agent_output if request.agent == "classification" else None,
@@ -531,13 +751,16 @@ async def analyze_operations(request: AnalysisRequest):
                 root_cause=agent_output if request.agent == "root_cause" else None,
                 action_plan=agent_output if request.agent == "action_planner" else None,
                 retrieved_evidence=evidence_chunks,
-                quality_decision="passed",
-                confidence_score=80.0 if evidence_chunks else 0.0,
-                agent_timings={request.agent: {"status": "success", "duration_ms": dur_ms}},
+                quality_decision=None,
+                confidence_score=None,
+                agent_timings={request.agent: {"status": agent_status, "duration_ms": dur_ms}},
                 execution_trace=trace_events,
                 warnings=[],
-                errors=[],
+                errors=[] if agent_succeeded else [{"node": request.agent, "error": f"Agent returned status: {agent_status}."}],
                 provenance={"mode": "direct_agent_invocation", "agent": request.agent},
+                pii_masked=False,
+                pii_decoded=False,
+                viewer_role=request.viewer_role,
             )
 
         # Persist analysis and trace
@@ -550,11 +773,17 @@ async def analyze_operations(request: AnalysisRequest):
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error executing analysis: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis pipeline failure: {str(e)}"
+            detail={
+                "message": "Analysis pipeline failure.",
+                "request_id": req_id,
+                "error": str(e),
+            }
         )
 
 

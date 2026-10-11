@@ -109,9 +109,8 @@ class ClassificationAgent:
             )
             payload = ClassificationPayload.model_validate(llm_result)
         except Exception as e:
-            logger.warning(f"Classification LLM failed, using deterministic classifier: {e}")
-            payload = heuristic_payload
-            model_used = "deterministic_rules"
+            logger.exception("Classification LLM failed; no heuristic response will be returned.")
+            raise RuntimeError(f"Classification analysis failed: {e}") from e
 
         # Construct traceable evidence references
         evidence_refs: List[EvidenceRef] = []

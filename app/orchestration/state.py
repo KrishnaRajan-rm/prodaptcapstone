@@ -69,6 +69,7 @@ class OrchestrationState(TypedDict):
     agent_durations_ms: Annotated[Dict[str, float], merge_dicts]
     agent_timestamps: Annotated[Dict[str, Dict[str, float]], merge_dicts]
     agent_errors: Annotated[Dict[str, str], merge_dicts]
+    stage_timings: Annotated[Dict[str, Dict[str, Any]], merge_dicts]
 
     # Observability and diagnostics
     warnings: Annotated[List[str], operator.add]

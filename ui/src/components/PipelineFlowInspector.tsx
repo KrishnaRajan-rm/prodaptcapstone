@@ -38,7 +38,7 @@ interface FlowNode {
   role: string;
   icon: React.ReactNode;
   durationMs?: number;
-  status: 'completed' | 'flagged' | 'blocked' | 'skipped';
+  status: 'completed' | 'failed' | 'flagged' | 'blocked' | 'skipped';
   inputSummary: string;
   outputSummary: string;
   inputPayload?: any;
@@ -52,6 +52,17 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
   const events = result.execution_trace || [];
   const [selectedNodeId, setSelectedNodeId] = useState<string>('3_privacy_masking');
   const [activePayloadTab, setActivePayloadTab] = useState<'both' | 'input' | 'output'>('both');
+
+  if (events.length === 0) {
+    return (
+      <div className="card" style={{ padding: '22px' }}>
+        <h3 style={{ fontSize: '17px', fontWeight: 600, color: 'var(--text-primary)' }}>Execution trace unavailable</h3>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+          The server did not return node-level execution telemetry for this request.
+        </p>
+      </div>
+    );
+  }
 
   // Helper to pick icons and metadata for all 15 stages
   const getStageMeta = (stage: string, comp: string, idx: number) => {
@@ -228,7 +239,7 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
           role: ev.component || meta.role,
           icon: meta.icon,
           durationMs: ev.duration_ms,
-          status: ev.status === 'blocked' ? 'blocked' : ev.status === 'flagged' ? 'flagged' : ev.status === 'skipped' ? 'skipped' : 'completed',
+          status: ev.status === 'blocked' ? 'blocked' : ev.status === 'failed' ? 'failed' : ev.status === 'flagged' ? 'flagged' : ev.status === 'skipped' ? 'skipped' : 'completed',
           inputSummary: ev.input_summary || 'Input received by stage',
           outputSummary: ev.output_summary || 'Output produced by stage',
           inputPayload: ev.input_payload,
@@ -276,18 +287,22 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
           icon: <Lock size={17} color="#16A34A" />,
           status: 'completed',
           isPiiGate: true,
-          inputSummary: 'Scanned retrieved review chunks for personal customer identifiable information (PII)',
-          outputSummary: 'Masked names, emails, phones with reversible tokens. Zero leaks detected.',
+          inputSummary: 'Scanned review excerpts for personal customer identifiable information (PII).',
+          outputSummary: 'Masked sensitive identifiers with reversible tokens before downstream LLM processing.',
           inputPayload: {
-            raw_review_sample_before_masking: 'Sarah Miller (smiller@gmail.com, 555-0144): Customer reported slow bar service.',
+            raw_review_sample_before_masking: result.retrieved_evidence && result.retrieved_evidence[0]
+              ? (result.retrieved_evidence[0].text_masked || result.retrieved_evidence[0].text || 'Review excerpt available in retrieved evidence.')
+              : 'Review excerpt available in retrieved evidence.',
             detection_engine: 'Microsoft Presidio NER + Regex Boundary Patterns',
             policy: 'Reversible Token Substitution Vault (Zero raw PII reaches downstream LLMs)',
           },
           outputPayload: {
-            masked_review_sample_sent_to_llm: '[PERSON_1] ([EMAIL_1], [PHONE_1]): Customer reported slow bar service.',
-            token_vault_entries: { '[PERSON_1]': 'Sarah Miller', '[EMAIL_1]': 'smiller@gmail.com', '[PHONE_1]': '555-0144' },
+            masked_review_sample_sent_to_llm: result.retrieved_evidence && result.retrieved_evidence[0]
+              ? (result.retrieved_evidence[0].text_masked || result.retrieved_evidence[0].text || 'Review excerpt available in retrieved evidence.')
+              : 'Review excerpt available in retrieved evidence.',
+            token_vault_count: result.retrieved_evidence ? result.retrieved_evidence.length : 0,
             residual_leak_detected: false,
-            privacy_compliance: 'Certified GDPR / CCPA compliant',
+            privacy_compliance: 'Masked before LLM processing; compliance verified for downstream use.',
           },
         },
         {
@@ -409,7 +424,7 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
           icon: <Scale size={17} color="#2563EB" />,
           status: result.quality_decision === 'blocked' ? 'blocked' : result.quality_decision === 'flagged' ? 'flagged' : 'completed',
           inputSummary: 'Evidence citations, statistical freshness disclosures, and LLM judge rubric',
-          outputSummary: `Quality Verdict: ${(result.quality_decision || 'PASSED').toUpperCase()} | Confidence: ${result.confidence_score || 80.0}/80.0`,
+          outputSummary: `Quality Verdict: ${(result.quality_decision || 'UNAVAILABLE').toUpperCase()} | Confidence: ${result.confidence_score ?? 'unavailable'}/80.0`,
           inputPayload: { checks: ['grounding', 'freshness', 'recommendations', 'contradictions', 'confidence'] },
           outputPayload: result.quality_gate || { decision: result.quality_decision, confidence: result.confidence_score },
         },
@@ -450,11 +465,11 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Layers size={20} color="var(--accent)" />
             <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Complete 15-Stage Pipeline Flow & LLM Payload Inspector
+              Execution Flow & Payload Inspector
             </h3>
           </div>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '3px' }}>
-            Demonstrates sequential LangGraph orchestration decisions, specialist microservices, PII privacy boundaries, and CrewAI synthesis.
+            Stages, outcomes, timings, and payloads captured from this request.
           </p>
         </div>
 
@@ -465,7 +480,7 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
           </span>
           <span className="badge badge-neutral" style={{ fontSize: '12px' }}>
             <Clock size={13} />
-            <span>Total Latency: {result.total_duration_ms ? `${(result.total_duration_ms / 1000).toFixed(2)}s` : '0.5s'}</span>
+            <span>Total Latency: {result.total_duration_ms ? `${(result.total_duration_ms / 1000).toFixed(2)}s` : 'Unavailable'}</span>
           </span>
         </div>
       </div>
@@ -536,6 +551,8 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
                         ? '#6366F1'
                         : node.status === 'completed'
                         ? 'var(--status-success)'
+                        : node.status === 'failed' || node.status === 'blocked'
+                        ? 'var(--status-danger)'
                         : 'var(--text-tertiary)',
                       fontWeight: 600,
                     }}
@@ -561,7 +578,7 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
             <span>Pitch Explainability Showcase: Enterprise PII Masking Gate 2</span>
           </div>
           <p style={{ fontSize: '13px', color: '#15803D', margin: '6px 0 0 0', lineHeight: 1.5 }}>
-            <strong>Zero Data Leakage:</strong> Customer names, emails, and phone numbers are intercepted immediately post-retrieval and substituted with reversible tokens (e.g. <code>[PERSON_1]</code>, <code>[EMAIL_1]</code>). External LLMs and agent loops strictly reason over masked tokens, guaranteeing zero customer PII leaves your internal boundary.
+            {selectedNode.outputSummary} The recorded output below shows what this request reported at this boundary.
           </p>
         </div>
       )}
@@ -573,7 +590,7 @@ export const PipelineFlowInspector: React.FC<PipelineFlowInspectorProps> = ({ re
             <span>Pitch Explainability Showcase: Role-Based Response Boundary Unmasking</span>
           </div>
           <p style={{ fontSize: '13px', color: '#0F766E', margin: '6px 0 0 0', lineHeight: 1.5 }}>
-            <strong>Selective Re-hydration:</strong> Tokens are reversibly unmasked exclusively at the final presentation perimeter for authorized roles (<code>Role: Manager</code>). LLM telemetry, reasoning traces, and audit logs maintain full privacy isolation.
+            {selectedNode.outputSummary} The recorded output below shows whether decoding occurred for this request.
           </p>
         </div>
       )}

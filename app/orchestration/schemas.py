@@ -58,6 +58,7 @@ class AggregatedWorkflowResponse(BaseModel):
     query: str
     workflow_status: Literal["success", "partial_success", "failed"]
     total_duration_ms: float = 0.0
+    stage_timings: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     classification: Optional[Dict[str, Any]] = None
     trends: Optional[Dict[str, Any]] = None
     root_cause: Optional[Dict[str, Any]] = None

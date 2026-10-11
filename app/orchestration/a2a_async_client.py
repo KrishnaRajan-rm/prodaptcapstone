@@ -5,11 +5,9 @@ handling timeouts, Agent Card validation, and structured error reporting.
 
 import os
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, Optional
 import httpx
-from pydantic import BaseModel
 
-from app.core.logging import logger
 from app.agents.schemas import (
     ClassificationRequest,
     TrendAnalysisRequest,
@@ -78,6 +76,23 @@ class AsyncA2AAgentClient:
         port = self.ports.get(agent_name, 8000)
         return f"http://{self.base_host}:{port}"
 
+    async def _invoke_agent(self, agent_name: str, path: str, payload: Dict[str, Any]) -> AgentResponseEnvelope:
+        client = self._get_client_for_agent(agent_name)
+        url = f"{self.get_agent_url(agent_name)}{path}"
+        try:
+            response = await client.post(path, json=payload)
+            response.raise_for_status()
+            return AgentResponseEnvelope.model_validate(response.json())
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:500] or exc.response.reason_phrase
+            raise RuntimeError(
+                f"{agent_name} API returned HTTP {exc.response.status_code}: {detail}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError(f"{agent_name} API unavailable at {url}: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"{agent_name} API returned an invalid response: {exc}") from exc
+
     async def get_agent_card(self, agent_name: str) -> Dict[str, Any]:
         """Fetches and verifies the Agent Card from the supported well-known endpoint."""
         client = self._get_client_for_agent(agent_name)
@@ -100,18 +115,8 @@ class AsyncA2AAgentClient:
         business_id: Optional[str] = None
     ) -> AgentResponseEnvelope:
         """Invokes Classification Agent (Port 8001) with in-process fallback."""
-        client = self._get_client_for_agent("classification")
         req = ClassificationRequest(review_id=review_id, text=text, business_id=business_id)
-        try:
-            resp = await client.post("/classify", json=req.model_dump())
-            resp.raise_for_status()
-            return AgentResponseEnvelope.model_validate(resp.json())
-        except Exception as e:
-            logger.info(f"Port 8001 service unavailable ({e}); running in-process ClassificationAgent fallback.")
-            from app.agents.classification.agent import ClassificationAgent
-            agent = ClassificationAgent()
-            import asyncio
-            return await asyncio.to_thread(agent.analyze, req)
+        return await self._invoke_agent("classification", "/classify", req.model_dump())
 
     async def analyze_trends(
         self,
@@ -120,18 +125,8 @@ class AsyncA2AAgentClient:
         horizon: int = 3
     ) -> AgentResponseEnvelope:
         """Invokes Trend Analysis Agent (Port 8002) with in-process fallback."""
-        client = self._get_client_for_agent("trends")
         req = TrendAnalysisRequest(business_id=business_id, city=city, forecast_horizon=horizon)
-        try:
-            resp = await client.post("/trends", json=req.model_dump())
-            resp.raise_for_status()
-            return AgentResponseEnvelope.model_validate(resp.json())
-        except Exception as e:
-            logger.info(f"Port 8002 service unavailable ({e}); running in-process TrendAnalysisAgent fallback.")
-            from app.agents.trends.agent import TrendAnalysisAgent
-            agent = TrendAnalysisAgent()
-            import asyncio
-            return await asyncio.to_thread(agent.analyze, req)
+        return await self._invoke_agent("trends", "/trends", req.model_dump())
 
     async def analyze_root_cause(
         self,
@@ -142,7 +137,6 @@ class AsyncA2AAgentClient:
         trend_findings: Optional[Dict[str, Any]] = None
     ) -> AgentResponseEnvelope:
         """Invokes Root-Cause Analysis Agent (Port 8003) with in-process fallback."""
-        client = self._get_client_for_agent("root_cause")
         req = RootCauseRequest(
             problem_statement=problem_statement,
             business_id=business_id,
@@ -150,16 +144,7 @@ class AsyncA2AAgentClient:
             classification_findings=classification_findings,
             trend_findings=trend_findings
         )
-        try:
-            resp = await client.post("/root-cause", json=req.model_dump())
-            resp.raise_for_status()
-            return AgentResponseEnvelope.model_validate(resp.json())
-        except Exception as e:
-            logger.info(f"Port 8003 service unavailable ({e}); running in-process RootCauseAnalysisAgent fallback.")
-            from app.agents.root_cause.agent import RootCauseAnalysisAgent
-            agent = RootCauseAnalysisAgent()
-            import asyncio
-            return await asyncio.to_thread(agent.analyze, req)
+        return await self._invoke_agent("root_cause", "/root-cause", req.model_dump())
 
     async def generate_action_plan(
         self,
@@ -170,7 +155,6 @@ class AsyncA2AAgentClient:
         root_cause_findings: Optional[Dict[str, Any]] = None
     ) -> AgentResponseEnvelope:
         """Invokes Action Planner Agent (Port 8004) with in-process fallback."""
-        client = self._get_client_for_agent("action_planner")
         req = ActionPlannerRequest(
             business_id=business_id,
             problem_statement=problem_statement,
@@ -178,16 +162,7 @@ class AsyncA2AAgentClient:
             trend_findings=trend_findings,
             root_cause_findings=root_cause_findings
         )
-        try:
-            resp = await client.post("/action-plan", json=req.model_dump())
-            resp.raise_for_status()
-            return AgentResponseEnvelope.model_validate(resp.json())
-        except Exception as e:
-            logger.info(f"Port 8004 service unavailable ({e}); running in-process ActionPlannerAgent fallback.")
-            from app.agents.action_planner.agent import ActionPlannerAgent
-            agent = ActionPlannerAgent()
-            import asyncio
-            return await asyncio.to_thread(agent.analyze, req)
+        return await self._invoke_agent("action_planner", "/action-plan", req.model_dump())
 
     async def aclose(self):
         """Closes all open HTTP clients."""

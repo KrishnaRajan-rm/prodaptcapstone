@@ -186,6 +186,7 @@ async def run_orchestration_workflow(
         "agent_durations_ms": {},
         "agent_timestamps": {},
         "agent_errors": {},
+        "stage_timings": {},
         "warnings": [],
         "errors": [],
         "workflow_status": "success",
@@ -197,16 +198,11 @@ async def run_orchestration_workflow(
     final_state = await workflow_graph.ainvoke(initial_state)
 
     if final_state.get("final_result"):
-        return AggregatedWorkflowResponse.model_validate(final_state["final_result"])
+        response = AggregatedWorkflowResponse.model_validate(final_state["final_result"])
+        response.stage_timings = final_state.get("stage_timings", {})
+        return response
 
-    # Fallback response construction
-    return AggregatedWorkflowResponse(
-        request_id=request.request_id,
-        business_id=request.business_id,
-        query=request.query,
-        workflow_status=final_state.get("workflow_status", "failed"),
-        total_duration_ms=final_state.get("total_duration_ms", 0.0),
-        warnings=final_state.get("warnings", []),
-        errors=final_state.get("errors", []),
-        viewer_role=request.viewer_role,
+    issues = final_state.get("errors") or final_state.get("warnings") or []
+    raise RuntimeError(
+        f"Orchestration graph returned no final result for request {request.request_id}. Issues: {issues}"
     )

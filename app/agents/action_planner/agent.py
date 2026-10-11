@@ -115,9 +115,8 @@ BASELINE PRIORITIZED CANDIDATES:
             )
             payload = ActionPlannerPayload.model_validate(llm_result)
         except Exception as e:
-            logger.warning(f"Action Planner LLM failed, using deterministic action plan: {e}")
-            payload = baseline_payload
-            model_used = "deterministic_priority_formula"
+            logger.exception("Action Planner LLM failed; no baseline action plan will be returned.")
+            raise RuntimeError(f"Action planning failed: {e}") from e
 
         # Construct evidence references
         evidence_refs: List[EvidenceRef] = []
