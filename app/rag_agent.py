@@ -21,16 +21,13 @@ from app.retrieval.hybrid import HybridRetriever, SearchResult, get_retriever
 
 load_dotenv()
 
-# List of prioritized free models on OpenRouter for robust failover
+# List of prioritized active free models on OpenRouter for robust failover
 DEFAULT_FREE_MODELS = [
     os.getenv("OPENROUTER_MODEL", "liquid/lfm-2.5-2.6b:free"),
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "apodex/apodex-1.1-mini:free",
+    "poolside/laguna-s-2.1:free",
     "liquid/lfm-2.5-2.6b:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.2-3b-instruct:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-small-24b-instruct-2501:free",
-    "qwen/qwen-2.5-coder-32b-instruct:free",
 ]
 # Deduplicate while preserving order
 FREE_MODEL_FAILOVERS: List[str] = []
@@ -88,10 +85,12 @@ class RAGAssistant:
         if not self.api_key:
             logger.warning("No OPENROUTER_API_KEY found in environment or .env file.")
 
-    def _call_openrouter_with_failover(self, messages: List[Dict[str, str]], max_tokens: int = 800) -> tuple[str, str]:
-        """Calls OpenRouter with automatic sequential failover across free models."""
+    def _call_openrouter_with_failover(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None) -> tuple[str, str]:
+        """Calls OpenRouter with automatic sequential failover across free models and continuation on length limit."""
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY is not set.")
+
+        effective_max_tokens = max_tokens or int(os.getenv("OPENROUTER_MAX_TOKENS", "2500"))
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -105,25 +104,53 @@ class RAGAssistant:
             payload = {
                 "model": model,
                 "messages": messages,
-                "max_tokens": max_tokens,
+                "max_tokens": effective_max_tokens,
                 "temperature": 0.2
             }
             try:
-                logger.info(f"Attempting LLM generation with model: '{model}'...")
+                logger.info(f"Attempting LLM generation with model: '{model}' (max_tokens={effective_max_tokens})...")
                 resp = requests.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=45
+                    timeout=55
                 )
 
                 if resp.status_code == 200:
                     data = resp.json()
-                    content = data["choices"][0]["message"]["content"]
+                    choice = data["choices"][0]
+                    content = (choice.get("message", {}).get("content") or "").strip()
+                    finish_reason = choice.get("finish_reason")
+
+                    # If response was truncated due to output token limit, request clean conclusion
+                    if finish_reason == "length" and content:
+                        logger.info(f"Model '{model}' reached length limit. Requesting concluding completion...")
+                        cont_payload = {
+                            "model": model,
+                            "messages": messages + [
+                                {"role": "assistant", "content": content},
+                                {"role": "user", "content": "Please continue and conclude your answer concisely from where you left off."}
+                            ],
+                            "max_tokens": 1000,
+                            "temperature": 0.2
+                        }
+                        try:
+                            c_resp = requests.post(
+                                f"{self.base_url}/chat/completions",
+                                headers=headers,
+                                json=cont_payload,
+                                timeout=30
+                            )
+                            if c_resp.status_code == 200:
+                                c_text = (c_resp.json()["choices"][0]["message"].get("content") or "").strip()
+                                content = content + "\n\n" + c_text
+                        except Exception as c_err:
+                            logger.warning(f"Continuation request failed: {c_err}")
+
                     logger.info(f"Successfully generated answer using '{model}'.")
                     return content, model
                 else:
-                    err_msg = f"Model '{model}' returned HTTP {resp.status_code}: {resp.text}"
+                    err_msg = f"Model '{model}' returned HTTP {resp.status_code}: {resp.text[:120]}"
                     logger.warning(err_msg)
                     errors.append(err_msg)
             except Exception as e:
@@ -169,7 +196,7 @@ class RAGAssistant:
             "1. Ground every claim in the provided sources. Cite the restaurant name and chunk ID whenever mentioning a review or incident.\n"
             "2. Identify actionable operational insights (e.g. wait times, food quality, staff behavior, cleanliness, prices).\n"
             "3. If the retrieved evidence does not contain enough information to answer, state so honestly.\n"
-            "4. Keep your answer concise, professional, and well-structured with bullet points."
+            "4. Keep your answer concise, professional, well-structured with bullet points, and always conclude your answer completely without trailing off or cutting off mid-sentence."
         )
 
         user_prompt = (
